@@ -46,6 +46,21 @@ V aplikaci jsou stránky:
    Bez `APP_PASSWORD` aplikace s hostovanou databází odmítne běžet. Ve Streamlit Cloud lze navíc v *Sharing* nastavit, že aplikaci uvidí jen pozvané účty.
 4. **Hlídání každou hodinu:** v repozitáři na GitHubu *Settings → Secrets and variables → Actions* přidej secret `POLLEDGE_DATABASE_URL` (stejný řetězec). Workflow `.github/workflows/watch.yml` pak každou hodinu stáhne průzkumy a kurzy, přepočítá model a nové signály zapíše do deníku. Ručně ho spustíš v záložce *Actions → watch → Run workflow*. Pro e-mailové notifikace vyplň `notify.email` v `settings.yaml` a přidej secret `POLLEDGE_SMTP_PASSWORD`.
 
+5. **Kurzy z kanceláří, které blokují cloud (Betano), stahuje NAS doma.** Viz další oddíl. Ve Streamlit Cloud přidej do Secrets `POLLEDGE_SKIP_SOURCES = "betano"`, aby se o Betano zbytečně nepokoušel. GitHub Actions to má nastavené ve workflow.
+
+### Hlídání z domácí sítě: Synology NAS (Container Manager)
+
+Betano (a možná i další kanceláře) odmítá přístup ze serverů v cloudu, ale z domácí sítě funguje. NAS jen sám navazuje odchozí spojení (Wikipedie, kanceláře, databáze), takže **veřejná IP adresa ani otevírání portů nejsou potřeba**.
+
+1. V DSM otevři **Container Manager** (Centrum balíčků; vyžaduje model s podporou Container Manageru).
+2. **Projekt → Vytvořit**, zvol libovolnou složku (např. `/docker/polledge`) a jako zdroj *Vytvořit docker-compose.yml*. Vlož obsah souboru [`docker-compose.yml`](docker-compose.yml).
+3. Ve stejné složce vytvoř soubor `.env` s jedním řádkem (stejná hodnota jako ve Streamlit Cloud):
+   ```
+   POLLEDGE_DATABASE_URL=postgresql://…
+   ```
+4. Projekt spusť. Kontejner `polledge-watch` každou hodinu stáhne průzkumy, kurzy z Betana a Polymarketu, přepočítá model a nové signály zapíše do deníku. Výpis jednotlivých běhů je v Container Manageru v *Kontejner → polledge-watch → Protokol*.
+5. **Aktualizace:** obraz `ghcr.io/globus2008/polledge:latest` se sestavuje automaticky po každé změně kódu. V Container Manageru u projektu zvol *Akce → Sestavit* (stáhne nejnovější obraz a kontejner restartuje).
+
 Poznámky:
 - GitHub u veřejných repozitářů po 60 dnech bez commitu plánované workflow vypne; znovu je zapneš v záložce *Actions*.
 - Kanceláře mohou blokovat přístup z datacenter (GitHub Actions, Streamlit Cloud) jinak než z domácí sítě. Případnou chybu `watch` zapíše do logu běhu.
