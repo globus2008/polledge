@@ -1,0 +1,36 @@
+# Hourly monitoring run: polls + odds -> model -> new signals into the hosted database.
+# Needs the repository secret POLLEDGE_DATABASE_URL; without it the job does nothing.
+name: watch
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      POLLEDGE_DATABASE_URL: ${{ secrets.POLLEDGE_DATABASE_URL }}
+      POLLEDGE_SMTP_PASSWORD: ${{ secrets.POLLEDGE_SMTP_PASSWORD }}
+    steps:
+      - name: Database secret missing
+        if: env.POLLEDGE_DATABASE_URL == ''
+        run: echo "::notice::POLLEDGE_DATABASE_URL is not set - nothing to do."
+      - uses: actions/checkout@v4
+        if: env.POLLEDGE_DATABASE_URL != ''
+      - uses: actions/setup-python@v5
+        if: env.POLLEDGE_DATABASE_URL != ''
+        with:
+          python-version: "3.12"
+          cache: pip
+      - if: env.POLLEDGE_DATABASE_URL != ''
+        run: pip install -e .
+      - name: polledge watch
+        if: env.POLLEDGE_DATABASE_URL != ''
+        run: polledge watch
