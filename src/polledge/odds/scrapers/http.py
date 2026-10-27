@@ -5,17 +5,15 @@ A 403/blocked response is reported as is - the scraper never tries to get around
 
 from __future__ import annotations
 
-import hashlib
-import json
 import logging
 import time
 from datetime import datetime
-from pathlib import Path
 from urllib.parse import urlsplit
 from urllib.robotparser import RobotFileParser
 
 import httpx
 
+from polledge.cache import PageCache
 from polledge.config import ScrapingSettings
 from polledge.errors import PollEdgeError
 from polledge.i18n import _
@@ -28,10 +26,9 @@ class ScrapeError(PollEdgeError):
 
 
 class PoliteFetcher:
-    def __init__(self, settings: ScrapingSettings, cache_dir: Path, transport: httpx.BaseTransport | None = None):
+    def __init__(self, settings: ScrapingSettings, cache: PageCache, transport: httpx.BaseTransport | None = None):
         self.settings = settings
-        self.cache_dir = cache_dir
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.cache = cache
         self._client = httpx.Client(
             headers={"User-Agent": settings.user_agent, "Accept-Language": "cs-CZ,cs;q=0.9"},
             timeout=settings.timeout_seconds,
@@ -41,21 +38,15 @@ class PoliteFetcher:
         self._robots: dict[str, RobotFileParser | None] = {}
         self._last_request: dict[str, float] = {}
 
-    def _cache_path(self, url: str) -> Path:
-        return self.cache_dir / f"{hashlib.sha1(url.encode('utf-8')).hexdigest()[:20]}.json"
-
     def get(self, url: str, force: bool = False) -> str:
         return self.get_with_time(url, force)[0]
 
     def get_with_time(self, url: str, force: bool = False) -> tuple[str, datetime]:
         """Page body and the time it was actually downloaded (older when served from the cache)."""
-        cache = self._cache_path(url)
-        if cache.exists() and not force:
-            age_min = (time.time() - cache.stat().st_mtime) / 60
-            if age_min < self.settings.cache_ttl_minutes:
-                log.info("Cache hit for %s (%.0f min old)", url, age_min)
-                data = json.loads(cache.read_text(encoding="utf-8"))
-                return data["body"], datetime.fromtimestamp(data["fetched"])
+        cached = self.cache.get(url)
+        if cached is not None and not force and cached.age_hours() * 60 < self.settings.cache_ttl_minutes:
+            log.info("Cache hit for %s (%.0f min old)", url, cached.age_hours() * 60)
+            return cached.body, cached.fetched_at
 
         host = urlsplit(url).netloc
         robots = self._robots_for(url)
@@ -64,9 +55,7 @@ class PoliteFetcher:
         self._wait_for(host, robots)
 
         body = self._request(url)
-        fetched = time.time()
-        cache.write_text(json.dumps({"url": url, "fetched": fetched, "body": body}), encoding="utf-8")
-        return body, datetime.fromtimestamp(fetched)
+        return body, self.cache.put(url, body)
 
     def _robots_for(self, url: str) -> RobotFileParser | None:
         if not self.settings.respect_robots_txt:

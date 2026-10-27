@@ -19,10 +19,12 @@ dependencies = [
     "pydantic>=2.6",
     "PyYAML>=6",
     "SQLAlchemy>=2.0",
+    "psycopg[binary]>=3.2",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+web = ["streamlit>=1.40"]
+dev = ["pytest>=8", "streamlit>=1.40"]
 
 [project.scripts]
 polledge = "polledge.cli:app"

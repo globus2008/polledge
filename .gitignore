@@ -5,3 +5,4 @@ data/cache/
 data/*.db
 logs/
 .pytest_cache/
+.streamlit/secrets.toml

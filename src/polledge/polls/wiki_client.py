@@ -1,15 +1,13 @@
-"""MediaWiki API client with on-disk cache, identifiable User-Agent and retries."""
+"""MediaWiki API client with a database page cache, identifiable User-Agent and retries."""
 
 from __future__ import annotations
 
-import hashlib
-import json
 import logging
 import time
-from pathlib import Path
 
 import httpx
 
+from polledge.cache import PageCache
 from polledge.config import WikipediaSettings
 from polledge.errors import FetchError
 from polledge.i18n import _
@@ -18,40 +16,32 @@ log = logging.getLogger(__name__)
 
 
 class WikiClient:
-    def __init__(self, settings: WikipediaSettings, cache_dir: Path, transport: httpx.BaseTransport | None = None):
+    def __init__(self, settings: WikipediaSettings, cache: PageCache, transport: httpx.BaseTransport | None = None):
         self.settings = settings
         if "CHANGE-ME" in settings.user_agent:
             log.warning(_("Add a contact to wikipedia.user_agent in settings.yaml (Wikipedia bot policy)"))
-        self.cache_dir = cache_dir
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.cache = cache
         self._client = httpx.Client(
             headers={"User-Agent": settings.user_agent, "Accept-Encoding": "gzip"},
             timeout=settings.timeout_seconds,
             transport=transport,
         )
 
-    def _cache_path(self, page: str) -> Path:
-        digest = hashlib.sha1(page.encode("utf-8")).hexdigest()[:16]
-        safe = "".join(ch if ch.isalnum() else "_" for ch in page)[:80]
-        return self.cache_dir / f"{safe}_{digest}.json"
-
     def get_page_html(self, page: str, force: bool = False) -> str:
         """Return rendered HTML of a page; served from cache when fresh enough."""
-        cache = self._cache_path(page)
-        if cache.exists() and not force:
-            age_hours = (time.time() - cache.stat().st_mtime) / 3600
-            if age_hours < self.settings.cache_ttl_hours:
-                log.info("Cache hit for '%s' (%.1f h old)", page, age_hours)
-                return json.loads(cache.read_text(encoding="utf-8"))["html"]
+        cached = self.cache.get(page)
+        if cached is not None and not force and cached.age_hours() < self.settings.cache_ttl_hours:
+            log.info("Cache hit for '%s' (%.1f h old)", page, cached.age_hours())
+            return cached.body
 
         try:
             html = self._fetch(page)
         except FetchError:
-            if cache.exists():
+            if cached is not None:
                 log.warning("Download of '%s' failed, using stale cache", page)
-                return json.loads(cache.read_text(encoding="utf-8"))["html"]
+                return cached.body
             raise
-        cache.write_text(json.dumps({"page": page, "fetched": time.time(), "html": html}), encoding="utf-8")
+        self.cache.put(page, html)
         return html
 
     def _fetch(self, page: str) -> str:

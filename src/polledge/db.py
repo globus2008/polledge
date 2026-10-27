@@ -13,10 +13,13 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
+    Text,
     UniqueConstraint,
     create_engine,
 )
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 
 class Base(DeclarativeBase):
@@ -106,9 +109,50 @@ class ElectionResultRow(Base):
     entered_at: Mapped[datetime] = mapped_column(DateTime)
 
 
-def make_session_factory(db_path: Path | str) -> sessionmaker:
-    if str(db_path) != ":memory:":
-        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-    engine = create_engine(f"sqlite:///{db_path}")
+class HttpCacheRow(Base):
+    """Downloaded pages (Wikipedia, bookmakers), so repeated runs do not hit the sites again."""
+
+    __tablename__ = "http_cache"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    url: Mapped[str] = mapped_column(String(1024))
+    body: Mapped[str] = mapped_column(Text)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class AppSettingRow(Base):
+    """Small key/value store, e.g. calibrated model parameters."""
+
+    __tablename__ = "app_setting"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[dict] = mapped_column(JSON)
+    updated_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+def make_engine(url: str) -> Engine:
+    """Engine for a SQLAlchemy URL; creates the SQLite directory and the schema if needed."""
+    if url.startswith("sqlite:///") and url != "sqlite:///:memory:":
+        Path(url.removeprefix("sqlite:///")).parent.mkdir(parents=True, exist_ok=True)
+    kwargs = {"pool_pre_ping": True} if not url.startswith("sqlite") else {}
+    engine = create_engine(url, **kwargs)
     Base.metadata.create_all(engine)
+    return engine
+
+
+def make_session_factory(db: Path | str) -> sessionmaker:
+    """Session factory for a SQLAlchemy URL, a SQLite file path or ":memory:"."""
+    text = str(db)
+    if text == ":memory:":
+        url = "sqlite:///:memory:"
+    elif "://" in text:
+        url = text
+    else:
+        url = f"sqlite:///{text}"
+    if url == "sqlite:///:memory:":
+        # One shared connection, otherwise every session would see a new empty database.
+        engine = create_engine(url, poolclass=StaticPool, connect_args={"check_same_thread": False})
+        Base.metadata.create_all(engine)
+    else:
+        engine = make_engine(url)
     return sessionmaker(engine, expire_on_commit=False)

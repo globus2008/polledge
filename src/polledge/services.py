@@ -1,14 +1,25 @@
-"""Glue between storage, model and signals, shared by the CLI and the backtest."""
+"""Glue between storage, model and signals, shared by the CLI, the web app and the backtest."""
 
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
 from datetime import date, datetime
+from pathlib import Path
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
-from polledge.config import ElectionConfig, ModelParams, Settings, model_params_for
+from polledge.cache import PageCache
+from polledge.config import (
+    ElectionConfig,
+    ModelParams,
+    Settings,
+    apply_calibration,
+    load_settings,
+    model_params_for,
+    read_yaml,
+)
+from polledge.db import AppSettingRow, make_session_factory
 from polledge.errors import PollEdgeError
 from polledge.model.markets import MarketSpec, default_markets, market_probabilities, parse_market
 from polledge.model.simulate import SimulationResult, simulate_election
@@ -22,6 +33,75 @@ from polledge.signals.compare import MarketComparison, compare_market
 from polledge.i18n import _
 
 log = logging.getLogger(__name__)
+
+CALIBRATION_KEY = "calibrated_model"
+
+
+@dataclass
+class AppContext:
+    """Settings + database, the entry point for every front end (CLI, web, scheduled job)."""
+
+    settings: Settings
+    sessions: sessionmaker
+
+    def session(self) -> Session:
+        return self.sessions()
+
+    def wiki_client(self) -> WikiClient:
+        return WikiClient(self.settings.wikipedia, PageCache(self.sessions, "wikipedia"))
+
+    def fetcher(self):
+        from polledge.odds.scrapers import PoliteFetcher
+
+        return PoliteFetcher(self.settings.scraping, PageCache(self.sessions, "bookmakers"))
+
+
+def open_app(config: Path | None = None) -> AppContext:
+    settings = load_settings(config)
+    ctx = AppContext(settings, make_session_factory(settings.db_url()))
+    with ctx.sessions() as session:
+        calibration = load_calibration(session)
+        if calibration is None:
+            calibration = import_legacy_calibration(session, settings)
+    if calibration:
+        apply_calibration(settings, calibration.get("model"), "database (app_setting)")
+    return ctx
+
+
+def load_calibration(session: Session) -> dict | None:
+    row = session.get(AppSettingRow, CALIBRATION_KEY)
+    return row.value if row is not None else None
+
+
+def save_calibration(session: Session, payload: dict) -> None:
+    row = session.get(AppSettingRow, CALIBRATION_KEY)
+    if row is None:
+        session.add(AppSettingRow(key=CALIBRATION_KEY, value=payload, updated_at=datetime.now()))
+    else:
+        row.value, row.updated_at = payload, datetime.now()
+    session.commit()
+
+
+def delete_calibration(session: Session) -> bool:
+    row = session.get(AppSettingRow, CALIBRATION_KEY)
+    if row is None:
+        return False
+    session.delete(row)
+    session.commit()
+    return True
+
+
+def import_legacy_calibration(session: Session, settings: Settings) -> dict | None:
+    """One-time import of config/calibrated.yaml (older versions kept calibration in a file)."""
+    path = settings.resolve(settings.calibrated_file)
+    if not path.exists():
+        return None
+    payload = read_yaml(path)
+    if not payload.get("model"):
+        return None
+    save_calibration(session, payload)
+    log.info("Imported calibrated parameters from %s into the database", path)
+    return payload
 
 
 def update_polls(session: Session, client: WikiClient, election: ElectionConfig, force: bool = False) -> tuple[int, int, int]:

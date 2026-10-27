@@ -1,10 +1,13 @@
 import json
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import httpx
 import pytest
 
+from polledge.cache import PageCache
 from polledge.config import BookmakerConfig, ScrapingSettings, load_election
+from polledge.db import make_session_factory
 from polledge.errors import ConfigError
 from polledge.odds.scrapers import PoliteFetcher, ScrapeError, make_source
 from polledge.odds.scrapers import http as http_module
@@ -30,7 +33,8 @@ def no_sleep(monkeypatch):
 
 def _fetcher(tmp_path, handler, **settings):
     cfg = ScrapingSettings(min_delay_seconds=0, **settings)
-    return PoliteFetcher(cfg, tmp_path, transport=httpx.MockTransport(handler))
+    cache = PageCache(make_session_factory(":memory:"), "bookmakers")
+    return PoliteFetcher(cfg, cache, transport=httpx.MockTransport(handler))
 
 
 def _site(pages: dict[str, httpx.Response], calls: list | None = None):
@@ -93,10 +97,8 @@ def test_cached_page_keeps_original_timestamp(tmp_path, election):
     fetcher = _fetcher(tmp_path, _site({EVENT_URL: httpx.Response(200, text=html)}))
     source = BetanoSource(fetcher, election, election.bookmakers["betano"])
     first = source.fetch()
-    cache = fetcher._cache_path(EVENT_URL)
-    data = json.loads(cache.read_text(encoding="utf-8"))
-    data["fetched"] -= 600  # pretend the page was downloaded 10 minutes ago
-    cache.write_text(json.dumps(data), encoding="utf-8")
+    # pretend the cached page was downloaded 10 minutes ago
+    fetcher.cache.put(EVENT_URL, html, fetched_at=datetime.now() - timedelta(minutes=10))
     second = source.fetch()
     assert second[0].timestamp < first[0].timestamp
 

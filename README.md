@@ -12,7 +12,44 @@ Co aplikace umí:
 - signály, Kellyho kritérium a detekci arbitráže,
 - deník a vyhodnocení,
 - kalibraci modelu na minulých volbách,
-- **pravidelné hlídání** (`watch`) s notifikacemi do konzole nebo e-mailem.
+- **pravidelné hlídání** (`watch`) s notifikacemi do konzole nebo e-mailem,
+- **webové rozhraní** (Streamlit) lokálně nebo na internetu, chráněné heslem.
+
+Všechna data (průzkumy, kurzy, deník, cache stažených stránek, nakalibrované parametry) jsou v databázi: lokálně v SQLite, na internetu v PostgreSQL. V souborech zůstává jen konfigurace (`config/*.yaml`), kterou verzuje git.
+
+## Webová aplikace
+
+### Na vlastním počítači
+
+Po instalaci (níže) stačí dvojklik na **`PollEdge.bat`**. Aplikace se otevře v prohlížeči na `http://localhost:8501` a je dostupná jen z tohoto počítače. S lokální databází SQLite nepotřebuje heslo.
+
+V aplikaci jsou stránky:
+
+- **Model**: odhad výsledku, postup do 2. kola, vítěz, vývoj průzkumů v grafu, house effects, pravděpodobnost libovolného trhu,
+- **Signály**: porovnání s kurzy, value signály, arbitráže, zápis do deníku, stažení kurzů z kanceláří,
+- **Kurzy**: ruční zadání formulářem, import CSV/YAML, přehled marží, mazání chybných kurzů,
+- **Deník**: virtuální sázky a vyhodnocení po zadání výsledku voleb,
+- **Kalibrace a backtest**.
+
+### Na internetu (zdarma): Neon + Streamlit Community Cloud + GitHub Actions
+
+1. **Databáze:** na [neon.tech](https://neon.tech) založ projekt (free tier) a zkopíruj *connection string* (`postgresql://…?sslmode=require`).
+2. **Přenos dat** z lokální databáze do Neonu (jednou):
+   ```powershell
+   polledge migrate-db --target "postgresql://…"
+   ```
+3. **Aplikace:** na [share.streamlit.io](https://share.streamlit.io) se přihlas přes GitHub a vytvoř aplikaci z repozitáře `globus2008/polledge`, větev `main`, soubor `streamlit_app.py`. V *Advanced settings → Secrets* vlož:
+   ```toml
+   APP_PASSWORD = "silné-heslo"
+   POLLEDGE_DATABASE_URL = "postgresql://…"
+   ```
+   Bez `APP_PASSWORD` aplikace s hostovanou databází odmítne běžet. Ve Streamlit Cloud lze navíc v *Sharing* nastavit, že aplikaci uvidí jen pozvané účty.
+4. **Hlídání každou hodinu:** v repozitáři na GitHubu *Settings → Secrets and variables → Actions* přidej secret `POLLEDGE_DATABASE_URL` (stejný řetězec). Workflow `.github/workflows/watch.yml` pak každou hodinu stáhne průzkumy a kurzy, přepočítá model a nové signály zapíše do deníku. Ručně ho spustíš v záložce *Actions → watch → Run workflow*. Pro e-mailové notifikace vyplň `notify.email` v `settings.yaml` a přidej secret `POLLEDGE_SMTP_PASSWORD`.
+
+Poznámky:
+- GitHub u veřejných repozitářů po 60 dnech bez commitu plánované workflow vypne; znovu je zapneš v záložce *Actions*.
+- Kanceláře mohou blokovat přístup z datacenter (GitHub Actions, Streamlit Cloud) jinak než z domácí sítě. Případnou chybu `watch` zapíše do logu běhu.
+- Databázi lze kdykoli zvolit i pro CLI: `$env:POLLEDGE_DATABASE_URL = "postgresql://…"`.
 
 ## Instalace
 
@@ -51,7 +88,7 @@ Globální volby: `-c/--config cesta/settings.yaml` (jiná konfigurace) a `-v/--
 
 | Příkaz | Co dělá |
 |---|---|
-| `update-polls [-e ID] [--history] [--force]` | Stáhne stránky přes MediaWiki API, naparsuje tabulky a uloží je do SQLite s deduplikací. Stránky se cachují v `data/cache/` (výchozí platnost 6 h). `--force` cache obejde, `--history` stáhne i historické volby. |
+| `update-polls [-e ID] [--history] [--force]` | Stáhne stránky přes MediaWiki API, naparsuje tabulky a uloží je do databáze s deduplikací. Stránky se cachují v databázi (výchozí platnost 6 h). `--force` cache obejde, `--history` stáhne i historické volby. |
 | `model -e ID [-n RUNS] [--as-of YYYY-MM-DD] [-m TRH] [--save]` | Spočítá vážený průměr a Monte Carlo simulaci a vypíše tabulky. `--save` uloží pravděpodobnosti do deníku pro pozdější Brierovo skóre. |
 | `import-odds SOUBOR [-e ID]` | Načte kurzy z CSV nebo YAML, uloží je do DB a vypíše marži každé kanceláře. |
 | `fetch-odds [-e ID] [-b KANCELÁŘ] [--force]` | Stáhne kurzy z veřejných stránek kanceláří podle sekce `bookmakers` ve volbách a uloží je s časem stažení. |
@@ -60,6 +97,8 @@ Globální volby: `-c/--config cesta/settings.yaml` (jiná konfigurace) a `-v/--
 | `journal -e ID` | Vypíše virtuální sázky. |
 | `settle -e ID [-r vysledek.yaml]` | Zapíše skutečný výsledek a vyhodnotí sázky: P/L, ROI a Brierovo skóre modelu a trhu. |
 | `calibrate [-e ID ...] [--horizons 90,60,30,14,7,1]` | Nakalibruje parametry modelu na minulých volbách. |
+| `calibrate-reset` | Smaže nakalibrované parametry, model znovu použije `settings.yaml`. |
+| `migrate-db --target URL [--replace]` | Zkopíruje všechna data do jiné databáze (např. z lokální SQLite do PostgreSQL). |
 | `backtest -e ID [--odds SOUBOR]` | Ukáže přesnost modelu na minulých volbách. S `--odds` přehraje i virtuální sázení. |
 
 ## Konfigurace
@@ -68,7 +107,9 @@ Globální volby: `-c/--config cesta/settings.yaml` (jiná konfigurace) a `-v/--
 
 Obsahuje globální nastavení: cesty, Wikipedii (User-Agent, cache, timeouty), parametry modelu (`model:`) a signálů (`signals:`). Každý parametr je v souboru okomentovaný. Žádný parametr modelu není zadaný natvrdo v kódu.
 
-Pokud existuje `config/calibrated.yaml` (vytváří ho `polledge calibrate`), jeho hodnoty mají přednost před `model:` v `settings.yaml`. K původním hodnotám se vrátíš tak, že soubor smažeš.
+Nakalibrované parametry (`polledge calibrate` nebo stránka *Kalibrace* ve webu) se ukládají do databáze a mají přednost před `model:` v `settings.yaml`. K původním hodnotám se vrátíš příkazem `polledge calibrate-reset` nebo tlačítkem ve webu.
+
+Databáze: bez dalšího nastavení se používá lokální SQLite `data/polledge.db`. Proměnná prostředí `POLLEDGE_DATABASE_URL` (nebo `database_url` v `settings.yaml`) přepne na jinou databázi, např. PostgreSQL. Přihlašovací údaje patří do proměnné prostředí, ne do souboru v gitu.
 
 ### Přidání nových voleb
 
@@ -261,7 +302,7 @@ Model má jen několik parametrů: poločas, house effects, σ_sys, horizontovou
 
 ```powershell
 polledge update-polls --history   # stáhne historické volby z config/elections/history/
-polledge calibrate                 # grid search + leave-one-election-out, zapíše calibrated.yaml
+polledge calibrate                 # grid search + leave-one-election-out, uloží parametry do databáze
 polledge backtest -e fr_pres_2022  # přesnost modelu 90…1 den před volbami
 ```
 
@@ -298,6 +339,9 @@ src/polledge/journal/           deník, vyhodnocení, Brierovo skóre
 src/polledge/calibration/       backtest, metriky, grid search
 src/polledge/notify/            notifikace (konzole, e-mail)
 src/polledge/locales/cs.yaml    české texty výstupů
+src/polledge/web/               webová aplikace (Streamlit)
+streamlit_app.py, PollEdge.bat  spuštění webu (cloud / lokálně)
+.github/workflows/              testy a hodinové hlídání (GitHub Actions)
 tests/                          pytest (HTML fixture z Wikipedie v tests/fixtures)
 ```
 

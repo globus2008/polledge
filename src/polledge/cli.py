@@ -29,12 +29,15 @@ from polledge.config import (
     model_params_for,
     read_yaml,
 )
-from polledge.db import PaperBetRow, make_session_factory
+from sqlalchemy.exc import SQLAlchemyError
+
+from polledge.db import PaperBetRow
+from polledge.services import AppContext, open_app
 from polledge.errors import PollEdgeError
 from polledge.i18n import _, decimal
 from polledge.logging_setup import setup_logging
-from polledge.model.markets import parse_market
 from polledge.model.simulate import SimulationResult
+from polledge.presentation import market_label, outcome_label
 from polledge.odds.file_source import source_for_path
 from polledge.odds.repository import load_quotes, store_quotes
 from polledge.polls.repository import load_polls
@@ -63,19 +66,10 @@ log = logging.getLogger("polledge")
 DEFAULT_HORIZONS = "90,60,30,14,7,1"
 
 
-@dataclass
-class AppState:
-    settings: Settings
-    sessions: object
-
-    def session(self):
-        return self.sessions()
+_state: AppContext | None = None
 
 
-_state: AppState | None = None
-
-
-def state() -> AppState:
+def state() -> AppContext:
     assert _state is not None
     return _state
 
@@ -92,12 +86,15 @@ def main(
     global _state
     try:
         settings = load_settings(config)
+        i18n.set_language(settings.language)
+        setup_logging(settings.resolve(settings.log_dir) if settings.log_dir else None, verbose)
+        _state = open_app(config)
     except PollEdgeError as exc:
         print_error(exc)
         raise typer.Exit(1) from None
-    i18n.set_language(settings.language)
-    setup_logging(settings.resolve(settings.log_dir), verbose)
-    _state = AppState(settings, make_session_factory(settings.resolve(settings.database)))
+    except SQLAlchemyError as exc:
+        print_error(_("Cannot open the database: {error}", error=exc.__class__.__name__ + ": " + str(exc).splitlines()[0]))
+        raise typer.Exit(1) from None
 
 
 def handle_errors(func):
@@ -140,18 +137,6 @@ def fmt_date(value) -> str:
     return value.strftime(_("%Y-%m-%d"))
 
 
-def outcome_label(election: ElectionConfig, outcome: str) -> str:
-    if "|" in outcome:
-        return " vs. ".join(election.candidate_name(c) for c in outcome.split("|"))
-    labels = {"yes": _("yes"), "no": _("no"), "over": _("over"), "under": _("under")}
-    return labels.get(outcome) or election.candidate_name(outcome)
-
-
-def market_label(election: ElectionConfig, market: str) -> str:
-    names = {cid: election.candidate_name(cid) for cid in election.candidates}
-    return parse_market(market).describe(names)
-
-
 def ok(text: str) -> None:
     console.print(f"[green]✓[/green] {text}")
 
@@ -181,7 +166,7 @@ def update_polls_cmd(
     ids = election or (sorted(configured) if history else sorted(current))
     if not ids:
         raise PollEdgeError(_("No elections are configured (config/elections/*.yaml)"))
-    client = WikiClient(s.wikipedia, s.resolve(s.cache_dir))
+    client = state().wiki_client()
     failed = 0
     try:
         for eid in ids:
@@ -348,10 +333,7 @@ def _elections_with_bookmakers(ids: list[str] | None) -> list[ElectionConfig]:
 
 
 def _make_fetcher():
-    from polledge.odds.scrapers import PoliteFetcher
-
-    s = state().settings
-    return PoliteFetcher(s.scraping, s.resolve(s.cache_dir) / "bookmakers")
+    return state().fetcher()
 
 
 def _print_fetch_reports(cfg: ElectionConfig, reports) -> int:
@@ -406,7 +388,7 @@ def watch_cmd(
     s = state().settings
     notifiers = build_notifiers(s.notify, console)
     fetcher = _make_fetcher()
-    wiki = WikiClient(s.wikipedia, s.resolve(s.cache_dir))
+    wiki = state().wiki_client()
     try:
         for cfg in _elections_with_bookmakers(election):
             with state().session() as session:
@@ -597,9 +579,10 @@ def calibrate_cmd(
     election: Annotated[Optional[list[str]], typer.Option("--election", "-e", help=_("Past elections (default: all with a result)"))] = None,
     horizons: Annotated[str, typer.Option("--horizons", help=_("Days before the election, comma separated"))] = DEFAULT_HORIZONS,
     sims: Annotated[int, typer.Option("--sims", help=_("Simulations per grid point"))] = 2000,
-    write: Annotated[bool, typer.Option("--write/--no-write", help=_("Save the best parameters to calibrated.yaml"))] = True,
+    write: Annotated[bool, typer.Option("--write/--no-write", help=_("Save the best parameters to the database"))] = True,
 ) -> None:
-    from polledge.calibration.tune import grid_edges, tune, write_calibrated
+    from polledge.calibration.tune import calibration_payload, grid_edges, tune
+    from polledge.services import save_calibration
 
     s = state().settings
     hz = _parse_horizons(horizons)
@@ -638,10 +621,38 @@ def calibrate_cmd(
                                      "DEFAULT_GRID.", params=", ".join(edges)) + "[/yellow]")
 
     if write:
-        path = s.resolve(s.calibrated_file)
-        written = write_calibrated(path, res, base, ids)
-        console.print("[green]" + _("Parameters saved to {path}:", path=path) + f"[/green] {written}")
-        console.print("[dim]" + _("Delete the file to return to the values from settings.yaml.") + "[/dim]")
+        payload = calibration_payload(res, base, ids)
+        with state().session() as session:
+            save_calibration(session, payload)
+        console.print("[green]" + _("Calibrated parameters saved to the database:") + f"[/green] {payload['model']}")
+        console.print("[dim]" + _("`polledge calibrate-reset` returns to the values from settings.yaml.") + "[/dim]")
+
+
+@app.command("calibrate-reset", help=_("Delete the calibrated parameters; the model uses settings.yaml again."))
+@handle_errors
+def calibrate_reset_cmd() -> None:
+    from polledge.services import delete_calibration
+
+    with state().session() as session:
+        removed = delete_calibration(session)
+    console.print(_("Calibrated parameters deleted.") if removed else _("There were no calibrated parameters."))
+
+
+@app.command("migrate-db", help=_("Copy all data from this database to another one (e.g. local SQLite -> PostgreSQL)."))
+@handle_errors
+def migrate_db_cmd(
+    target: Annotated[str, typer.Option("--target", help=_("Target database URL (postgresql://...)"))],
+    replace: Annotated[bool, typer.Option("--replace", help=_("Overwrite data already in the target"))] = False,
+) -> None:
+    from polledge.config import Settings
+    from polledge.migrate import copy_database
+
+    target_url = Settings(database_url=target).db_url()
+    with console.status(_("Copying data...")):
+        counts = copy_database(state().settings.db_url(), target_url, replace=replace)
+    for table, n in counts.items():
+        console.print(f"  {table}: {n}")
+    ok(_("Data copied to the target database."))
 
 
 @app.command("backtest", help=_("Evaluate the model on past elections; with --odds also replay virtual betting."))

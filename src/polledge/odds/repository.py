@@ -38,6 +38,25 @@ def store_quotes(session: Session, quotes: list[OddsQuote], source: str) -> tupl
     return inserted, updated
 
 
+def quote_rows(session: Session, election_id: str, limit: int = 500) -> list[OddsQuoteRow]:
+    """Stored quotes, newest first (for listing and deleting in the web app)."""
+    query = (
+        select(OddsQuoteRow)
+        .where(OddsQuoteRow.election_id == election_id)
+        .order_by(OddsQuoteRow.timestamp.desc(), OddsQuoteRow.id.desc())
+        .limit(limit)
+    )
+    return list(session.scalars(query))
+
+
+def delete_quotes(session: Session, ids: list[int]) -> int:
+    rows = session.scalars(select(OddsQuoteRow).where(OddsQuoteRow.id.in_(ids))).all()
+    for row in rows:
+        session.delete(row)
+    session.commit()
+    return len(rows)
+
+
 def load_quotes(session: Session, election_id: str, until: datetime | None = None) -> list[OddsQuote]:
     query = select(OddsQuoteRow).where(OddsQuoteRow.election_id == election_id)
     if until is not None:

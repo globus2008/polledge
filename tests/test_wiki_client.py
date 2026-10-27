@@ -1,11 +1,11 @@
-import json
-import os
-import time
+from datetime import datetime, timedelta
 
 import httpx
 import pytest
 
+from polledge.cache import PageCache
 from polledge.config import WikipediaSettings
+from polledge.db import make_session_factory
 from polledge.errors import FetchError
 from polledge.polls import wiki_client
 from polledge.polls.wiki_client import WikiClient
@@ -18,7 +18,8 @@ def no_sleep(monkeypatch):
 
 def _client(tmp_path, handler, ttl=6.0):
     settings = WikipediaSettings(max_retries=2, cache_ttl_hours=ttl, user_agent="PollEdge-test/0.1")
-    return WikiClient(settings, tmp_path, transport=httpx.MockTransport(handler))
+    cache = PageCache(make_session_factory(":memory:"), "wikipedia")
+    return WikiClient(settings, cache, transport=httpx.MockTransport(handler))
 
 
 def test_fetch_sends_user_agent_and_caches(tmp_path):
@@ -47,10 +48,7 @@ def test_network_failure_falls_back_to_stale_cache(tmp_path):
         raise httpx.ConnectError("offline", request=request)
 
     client = _client(tmp_path, broken, ttl=1.0)
-    cache = client._cache_path("Page")
-    cache.write_text(json.dumps({"page": "Page", "html": "<p>old</p>"}), encoding="utf-8")
-    old = time.time() - 5 * 3600
-    os.utime(cache, (old, old))
+    client.cache.put("Page", "<p>old</p>", fetched_at=datetime.now() - timedelta(hours=5))
     assert client.get_page_html("Page") == "<p>old</p>"
 
 

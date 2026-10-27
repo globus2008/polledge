@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from datetime import date
 from pathlib import Path
 from typing import Any, Literal
@@ -79,10 +80,12 @@ class NotifySettings(BaseModel):
 
 class Settings(BaseModel):
     language: Literal["en", "cs"] = "cs"  # language of the output (catalog in polledge/locales)
+    # Local SQLite file, used when no database URL is given (env POLLEDGE_DATABASE_URL or database_url).
     database: Path = Path("data/polledge.db")
-    cache_dir: Path = Path("data/cache")
-    log_dir: Path = Path("logs")
+    database_url: str | None = None  # e.g. postgresql://user:pass@host/db; prefer the env variable for secrets
+    log_dir: Path | None = Path("logs")  # None: log to the console only
     elections_dir: Path = Path("config/elections")
+    # Legacy file with calibrated parameters; imported into the database once if it exists.
     calibrated_file: Path = Path("config/calibrated.yaml")
     wikipedia: WikipediaSettings = WikipediaSettings()
     model: ModelParams = ModelParams()
@@ -91,11 +94,22 @@ class Settings(BaseModel):
     notify: NotifySettings = NotifySettings()
 
     base_dir: Path = Path(".")
-    # Model params from settings.yaml before calibrated.yaml overrides (baseline for calibration).
+    # Model params from settings.yaml before calibrated overrides (baseline for calibration).
     uncalibrated_model: ModelParams | None = None
 
     def resolve(self, path: Path) -> Path:
         return path if path.is_absolute() else self.base_dir / path
+
+    def db_url(self) -> str:
+        """SQLAlchemy URL: env POLLEDGE_DATABASE_URL > database_url > local SQLite file."""
+        url = os.environ.get("POLLEDGE_DATABASE_URL") or self.database_url
+        if not url:
+            return f"sqlite:///{self.resolve(self.database)}"
+        # Hosted Postgres providers give postgres:// or postgresql:// URLs; use the psycopg 3 driver.
+        for prefix in ("postgres://", "postgresql://"):
+            if url.startswith(prefix):
+                return "postgresql+psycopg://" + url[len(prefix):]
+        return url
 
 
 class Candidate(BaseModel):
@@ -224,16 +238,19 @@ def load_settings(path: Path | None = None) -> Settings:
         raise ConfigError(_("Invalid settings in {path}: {error}", path=path, error=format_validation(exc))) from exc
     settings.base_dir = path.parent.parent if path.parent.name == "config" else path.parent
     settings.uncalibrated_model = settings.model
-    calibrated = settings.resolve(settings.calibrated_file)
-    if calibrated.exists():
-        overrides = read_yaml(calibrated).get("model", {})
-        if overrides:
-            log.info("Using calibrated model parameters from %s", calibrated)
-            try:
-                settings.model = ModelParams(**{**settings.model.model_dump(), **overrides})
-            except ValidationError as exc:
-                raise ConfigError(_("Invalid parameters in {path}: {error}", path=calibrated, error=format_validation(exc))) from exc
     return settings
+
+
+def apply_calibration(settings: Settings, overrides: dict[str, Any] | None, source: str) -> None:
+    """Overlay calibrated model parameters (stored in the database) on settings.yaml values."""
+    if not overrides:
+        return
+    base = settings.uncalibrated_model or settings.model
+    try:
+        settings.model = ModelParams(**{**base.model_dump(), **overrides})
+    except ValidationError as exc:
+        raise ConfigError(_("Invalid parameters in {path}: {error}", path=source, error=format_validation(exc))) from exc
+    log.info("Using calibrated model parameters from %s", source)
 
 
 def load_election(path: Path) -> ElectionConfig:
