@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import date, datetime
 
 from sqlalchemy.orm import Session
@@ -18,6 +19,7 @@ from polledge.polls.repository import load_polls, upsert_polls
 from polledge.polls.types import Poll
 from polledge.polls.wiki_client import WikiClient
 from polledge.signals.compare import MarketComparison, compare_market
+from polledge.i18n import _
 
 log = logging.getLogger(__name__)
 
@@ -28,6 +30,42 @@ def update_polls(session: Session, client: WikiClient, election: ElectionConfig,
     polls = parse_election_html(html, election)
     inserted, updated = upsert_polls(session, polls)
     return len(polls), inserted, updated
+
+
+@dataclass
+class FetchReport:
+    bookmaker: str
+    quotes: int = 0
+    inserted: int = 0
+    error: str | None = None
+
+
+def fetch_odds(
+    session: Session,
+    fetcher,
+    election: ElectionConfig,
+    bookmakers: list[str] | None = None,
+    force: bool = False,
+) -> list[FetchReport]:
+    """Download odds from the configured bookmaker pages and store them with the fetch time."""
+    from polledge.odds.repository import store_quotes
+    from polledge.odds.scrapers import make_source
+
+    reports = []
+    for name, book in election.bookmakers.items():
+        if bookmakers and name.lower() not in {b.lower() for b in bookmakers}:
+            continue
+        report = FetchReport(name)
+        try:
+            source = make_source(name, fetcher, election, book, force=force)
+            quotes = source.fetch(election.id)
+            report.quotes = len(quotes)
+            report.inserted, _updated = store_quotes(session, quotes, f"scraper:{source.name}")
+        except PollEdgeError as exc:
+            log.warning("Odds from %s for %s failed: %s", name, election.id, exc)
+            report.error = str(exc)
+        reports.append(report)
+    return reports
 
 
 def run_model(
@@ -44,7 +82,7 @@ def run_model(
                             two_round=election.type == "two_round", n_sims=n_sims)
     if sim is None:
         raise PollEdgeError(
-            f"Pro volby {election.id} nejsou k {as_of} žádné použitelné průzkumy. Spusť nejdřív `update-polls`."
+            _("No usable polls for election {id} as of {date}. Run `update-polls` first.", id=election.id, date=as_of)
         )
     return sim
 

@@ -12,14 +12,19 @@ from sqlalchemy.orm import Session
 from polledge.config import ElectionResult
 from polledge.db import ElectionResultRow, ModelSnapshotRow, PaperBetRow
 from polledge.model.markets import BINARY_OUTCOMES, parse_market
-from polledge.signals.compare import MarketComparison
+from polledge.signals.compare import MarketComparison, OutcomeComparison
 
 log = logging.getLogger(__name__)
 
 
-def record_signals(session: Session, election_id: str, comparisons: list[MarketComparison]) -> int:
-    """Store every current signal as a virtual bet; the same open bet at the same odds is not duplicated."""
-    created = 0
+def record_signals(
+    session: Session, election_id: str, comparisons: list[MarketComparison]
+) -> list[OutcomeComparison]:
+    """Store every current signal as a virtual bet; the same open bet at the same odds is not duplicated.
+
+    Returns the signals that were newly recorded (used for notifications).
+    """
+    created: list[OutcomeComparison] = []
     now = datetime.now()
     for comp in comparisons:
         for o in comp.signals:
@@ -50,7 +55,7 @@ def record_signals(session: Session, election_id: str, comparisons: list[MarketC
                     status="open",
                 )
             )
-            created += 1
+            created.append(o)
     session.commit()
     return created
 

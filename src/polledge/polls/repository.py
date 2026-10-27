@@ -12,9 +12,31 @@ from polledge.polls.types import Poll
 
 
 def upsert_polls(session: Session, polls: list[Poll]) -> tuple[int, int]:
-    """Insert new polls, update shares of already stored ones. Returns (inserted, updated)."""
+    """Insert new polls, update shares of already stored ones. Returns (inserted, updated).
+
+    Stored rows of the same poll (election, round, pollster, date) whose scenario no longer
+    appears in the new data are removed - they are stale versions left after a config change.
+    Polls that are missing from the new data altogether are kept.
+    """
     inserted = updated = 0
     now = datetime.now()
+    fresh: dict[tuple, set[str]] = {}
+    for poll in polls:
+        fresh.setdefault((poll.election_id, poll.round, poll.pollster, poll.end_date), set()).add(poll.scenario)
+    for (election_id, round_name, pollster, end_date), scenarios in fresh.items():
+        stale = session.scalars(
+            select(PollRow).where(
+                PollRow.election_id == election_id,
+                PollRow.round == round_name,
+                PollRow.pollster == pollster,
+                PollRow.end_date == end_date,
+                PollRow.scenario.not_in(scenarios),
+            )
+        ).all()
+        for row in stale:
+            session.delete(row)
+            updated += 1
+    session.flush()
     for poll in polls:
         row = session.scalars(
             select(PollRow).where(

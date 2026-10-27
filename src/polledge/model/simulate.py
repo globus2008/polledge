@@ -18,6 +18,7 @@ import numpy as np
 from polledge.config import OTHER, ModelParams
 from polledge.model.aggregate import PollAverage, weighted_average
 from polledge.polls.types import Poll
+from polledge.i18n import _
 
 log = logging.getLogger(__name__)
 
@@ -54,7 +55,7 @@ class SimulationResult:
         try:
             return self.candidates.index(candidate)
         except ValueError:
-            raise KeyError(f"Kandidát '{candidate}' není v modelu (nejsou pro něj průzkumy)") from None
+            raise KeyError(_("Candidate '{candidate}' is not in the model (no polls)", candidate=candidate)) from None
 
 
 def target_sigma_pp(mean: np.ndarray, n_eff: float, params: ModelParams, days_to_election: int) -> np.ndarray:
@@ -93,7 +94,7 @@ def simulate_shares(
 
     calib_rng = np.random.default_rng(12345)
     z_cal = calib_rng.standard_normal((_CALIBRATION_DRAWS, len(p)))
-    for _ in range(_CALIBRATION_ROUNDS):
+    for _round in range(_CALIBRATION_ROUNDS):
         draws = _softmax_draws(log_mean, sigma_log, z_cal)
         log_mean += np.log(p / np.clip(draws.mean(axis=0), 1e-12, None))
         realised = _softmax_draws(log_mean, sigma_log, z_cal).std(axis=0)
@@ -153,6 +154,7 @@ def _simulate_runoff(
         by_pair.setdefault("|".join(sorted(p.shares)), []).append(p)
 
     pair_codes = finalists[:, 0] * len(result.candidates) + finalists[:, 1]
+    fallback_rows = 0
     for code in np.unique(pair_codes):
         rows = np.nonzero(pair_codes == code)[0]
         a, b = divmod(int(code), len(result.candidates))
@@ -171,12 +173,14 @@ def _simulate_runoff(
             sigma = np.hypot(params.sigma_runoff_fallback_pp, horizon_pp) / 100.0
             draws = sa / (sa + sb) + sigma * rng.standard_normal(len(rows))
             result.runoff_sources[key] = "fallback"
-            if len(rows) / n >= 0.01:
-                log.warning("No runoff polls for %s vs %s (%.0f %% of sims), using first-round fallback",
-                            ca, cb, 100 * len(rows) / n)
+            fallback_rows += len(rows)
         draws = np.clip(draws, 0.0, 1.0)
         runoff_share[rows] = draws
         winner[rows] = np.where(draws > 0.5, a, b)
+
+    if fallback_rows / n >= 0.01:
+        log.warning("%.0f %% of simulated runoffs have no head-to-head polls; first-round ratio used instead",
+                    100 * fallback_rows / n)
 
     # An absolute majority in the first round wins outright.
     outright = ranking.max(axis=1) > 0.5

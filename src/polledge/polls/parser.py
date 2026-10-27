@@ -20,12 +20,9 @@ from polledge.polls.cleaning import (
     parse_sample_size,
 )
 from polledge.polls.types import Poll
+from polledge.i18n import _
 
 log = logging.getLogger(__name__)
-
-# Accepted range for the sum of shares in one row (polls are rounded; some omit minor candidates).
-MIN_ROW_TOTAL = 85.0
-MAX_ROW_TOTAL = 110.0
 
 _PARTY_PAREN_RE = re.compile(r"\s*\([^)]*\)\s*$")
 _PARTY_CODE_RE = re.compile(r"^[A-Z0-9!&/+\-]{1,8}$")
@@ -151,15 +148,16 @@ class _ColumnMap:
             for i, n in enumerate(norm):
                 if n == w or n.startswith(w):
                     return i
-            raise TableStructureError(
-                f"V tabulce '{table.title}' chybí sloupec '{wanted}'. Nalezené sloupce: {names}. "
-                "Struktura stránky se pravděpodobně změnila, uprav konfiguraci voleb."
-            )
+            raise TableStructureError(_(
+                "Table '{table}' has no column '{column}'. Columns found: {found}. "
+                "The page structure has probably changed; update the election config.",
+                table=table.title, column=wanted, found=names,
+            ))
 
         self.pollster = find(rnd.columns.pollster)
         self.fieldwork = find(rnd.columns.fieldwork)
-        self.sample = find(rnd.columns.sample_size)
-        fixed = {self.pollster, self.fieldwork, self.sample}
+        self.sample = find(rnd.columns.sample_size) if rnd.columns.sample_size else None
+        fixed = {self.pollster, self.fieldwork, self.sample} - {None}
 
         alias_to_id = {
             normalize_name(alias): cid for cid, cand in election.candidates.items() for alias in cand.all_names()
@@ -188,10 +186,11 @@ def parse_round(
 ) -> list[Poll]:
     selected = select_tables(tables, rnd)
     if not selected:
-        raise TableStructureError(
-            f"Pro {('1. kolo' if round_name == 'first' else '2. kolo')} voleb {election.id} "
-            "nebyla nalezena žádná tabulka. Zkontroluj nadpisy v konfiguraci (tables.heading)."
-        )
+        round_label = _("first round") if round_name == "first" else _("runoff")
+        raise TableStructureError(_(
+            "No table found for the {round} of election {id}. Check the headings in the config (tables.heading).",
+            round=round_label, id=election.id,
+        ))
     polls: list[Poll] = []
     for table in selected:
         polls.extend(_parse_table(table, election, round_name, rnd))
@@ -201,7 +200,7 @@ def parse_round(
 def _parse_table(table: WikiTable, election: ElectionConfig, round_name: str, rnd: RoundConfig) -> list[Poll]:
     grid, header_rows = table_to_grid(table.element)
     if header_rows == 0 or len(grid) <= header_rows:
-        raise TableStructureError(f"Tabulka '{table.title}' nemá rozpoznatelnou hlavičku.")
+        raise TableStructureError(_("Table '{table}' has no recognisable header.", table=table.title))
     names = column_names(grid, header_rows)
     cmap = _ColumnMap(names, rnd, election, table)
 
@@ -252,7 +251,8 @@ def _parse_row(
             return None
         shares = {cid: 100.0 * v / total for cid, v in shares.items()}
     else:
-        if not (MIN_ROW_TOTAL <= total <= MAX_ROW_TOTAL):
+        low, high = rnd.row_total
+        if not (low <= total <= high):
             log.debug("Row of %s %s skipped: shares sum to %.1f", pollster, end, total)
             return None
         # Residual up to 100 is attributed to minor candidates not listed in the table.
@@ -260,7 +260,7 @@ def _parse_row(
         if other > 0:
             shares[OTHER] = other
 
-    sample = parse_sample_size(row[cmap.sample])
+    sample = parse_sample_size(row[cmap.sample]) if cmap.sample is not None else None
     return Poll(
         election_id=election.id,
         round=round_name,
@@ -293,7 +293,7 @@ def merge_duplicates(polls: list[Poll]) -> list[Poll]:
 def parse_election_html(html: str, election: ElectionConfig) -> list[Poll]:
     tables = extract_tables(html)
     if not tables:
-        raise TableStructureError(f"Stránka '{election.wiki_page}' neobsahuje žádné tabulky průzkumů.")
+        raise TableStructureError(_("Page '{page}' contains no poll tables.", page=election.wiki_page))
     polls = parse_round(tables, election, "first", election.first_round)
     if election.runoff is not None:
         polls += parse_round(tables, election, "runoff", election.runoff)

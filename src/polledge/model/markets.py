@@ -16,6 +16,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from polledge.model.simulate import SimulationResult
+from polledge.i18n import _, decimal
 
 BINARY_OUTCOMES = {
     "qualify_runoff": ("yes", "no"),
@@ -44,38 +45,38 @@ class MarketSpec:
         names = names or {}
         cand = names.get(self.candidate, self.candidate) if self.candidate else ""
         if self.kind == "winner":
-            return "Vítěz voleb"
+            return _("Election winner")
         if self.kind == "first_round_winner":
-            return "Vítěz 1. kola"
+            return _("First-round winner")
         if self.kind == "finalists":
-            return "Dvojice ve 2. kole"
+            return _("Runoff pair")
         if self.kind == "qualify_runoff":
-            return f"{cand}: postup do 2. kola"
-        value = f"{self.value:g}".replace(".", ",")
+            return _("{candidate}: qualifies for the runoff", candidate=cand)
+        value = decimal(f"{self.value:g}")
         if self.kind == "threshold":
-            return f"{cand}: alespoň {value} %"
-        return f"{cand}: podíl nad/pod {value} %"
+            return _("{candidate}: at least {value} %", candidate=cand, value=value)
+        return _("{candidate}: share over/under {value} %", candidate=cand, value=value)
 
 
 def parse_market(market: str) -> MarketSpec:
     parts = market.strip().split(":")
     kind = parts[0]
     if kind not in MARKET_TYPES:
-        raise ValueError(f"Neznámý typ trhu '{kind}' (povolené: {', '.join(sorted(MARKET_TYPES))})")
+        raise ValueError(_("Unknown market type '{kind}' (allowed: {allowed})", kind=kind, allowed=", ".join(sorted(MARKET_TYPES))))
     if kind in ("winner", "first_round_winner", "finalists"):
         if len(parts) != 1:
-            raise ValueError(f"Trh '{market}' nemá mít další parametry")
+            raise ValueError(_("Market '{market}' takes no parameters", market=market))
         return MarketSpec(kind)
     if kind == "qualify_runoff":
         if len(parts) != 2:
-            raise ValueError(f"Trh '{market}': očekávám qualify_runoff:<ID>")
+            raise ValueError(_("Market '{market}': expected qualify_runoff:<ID>", market=market))
         return MarketSpec(kind, parts[1])
     if len(parts) != 3:
-        raise ValueError(f"Trh '{market}': očekávám {kind}:<ID>:<procenta>")
+        raise ValueError(_("Market '{market}': expected {kind}:<ID>:<percent>", market=market, kind=kind))
     try:
         value = float(parts[2].replace(",", "."))
     except ValueError:
-        raise ValueError(f"Trh '{market}': '{parts[2]}' není číslo") from None
+        raise ValueError(_("Market '{market}': '{value}' is not a number", market=market, value=parts[2])) from None
     return MarketSpec(kind, parts[1], value)
 
 
@@ -90,7 +91,7 @@ def market_probabilities(sim: SimulationResult, spec: MarketSpec) -> dict[str, f
         return dict(zip(sim.candidates, counts.tolist()))
     if spec.kind == "finalists":
         if sim.finalists is None:
-            raise ValueError("Trh 'finalists' je jen pro dvoukolové volby")
+            raise ValueError(_("Market '{market}' only exists in two-round elections", market="finalists"))
         codes, counts = np.unique(sim.finalists[:, 0] * k + sim.finalists[:, 1], return_counts=True)
         return {
             "|".join(sorted([sim.candidates[c // k], sim.candidates[c % k]])): n / sim.n_sims
@@ -101,7 +102,7 @@ def market_probabilities(sim: SimulationResult, spec: MarketSpec) -> dict[str, f
     yes_label, no_label = BINARY_OUTCOMES[spec.kind]
     if spec.kind == "qualify_runoff":
         if sim.finalists is None:
-            raise ValueError("Trh 'qualify_runoff' je jen pro dvoukolové volby")
+            raise ValueError(_("Market '{market}' only exists in two-round elections", market="qualify_runoff"))
         p = float(np.mean((sim.finalists == i).any(axis=1)))
     elif spec.kind == "threshold":
         p = float(np.mean(sim.shares[:, i] * 100 >= spec.value))

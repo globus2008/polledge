@@ -1,4 +1,5 @@
 # Globální nastavení PollEdge. Cesty jsou relativní ke kořeni projektu.
+language: cs                # jazyk výstupů: cs | en (nápovědu --help řídí proměnná POLLEDGE_LANG)
 database: data/polledge.db
 cache_dir: data/cache
 log_dir: logs
@@ -28,9 +29,28 @@ model:
   seed: null                # číslo = reprodukovatelné výsledky
   min_share_pct: 0.1
 
+scraping:                   # stahování kurzů z veřejných stránek kanceláří (fetch-odds, watch)
+  user_agent: "Mozilla/5.0 (compatible; PollEdge/0.2; personal odds research)"
+  cache_ttl_minutes: 30     # stránka se znovu nestahuje dřív než po této době
+  min_delay_seconds: 5      # rozestup dotazů na jeden server (delší Crawl-delay z robots.txt má přednost)
+  timeout_seconds: 20
+  max_retries: 2
+  respect_robots_txt: true
+
+notify:                     # kam posílat nové signály z příkazu `watch`
+  channels: [console]       # console, email
+  email:
+    smtp_host: ""           # např. smtp.seznam.cz
+    smtp_port: 587
+    use_tls: true
+    username: ""
+    password_env: POLLEDGE_SMTP_PASSWORD   # heslo se čte z proměnné prostředí, nikdy ze souboru
+    sender: ""
+    recipients: []
+
 signals:
   edge_threshold: 0.05      # signál při edge > 5 %
   kelly_fraction: 0.25      # 1/4 Kelly
   bankroll: 10000           # virtuální bankroll
   max_stake_pct: 0.05       # strop vkladu jako podíl bankrollu (null = bez stropu)
-  currency: "Kč"
+  currency: "Kč"            # jen popisek měny ve výpisech

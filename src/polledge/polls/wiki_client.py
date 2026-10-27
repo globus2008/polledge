@@ -12,6 +12,7 @@ import httpx
 
 from polledge.config import WikipediaSettings
 from polledge.errors import FetchError
+from polledge.i18n import _
 
 log = logging.getLogger(__name__)
 
@@ -20,7 +21,7 @@ class WikiClient:
     def __init__(self, settings: WikipediaSettings, cache_dir: Path, transport: httpx.BaseTransport | None = None):
         self.settings = settings
         if "CHANGE-ME" in settings.user_agent:
-            log.warning("Doplň kontakt do wikipedia.user_agent v settings.yaml (pravidla Wikipedie pro roboty)")
+            log.warning(_("Add a contact to wikipedia.user_agent in settings.yaml (Wikipedia bot policy)"))
         self.cache_dir = cache_dir
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self._client = httpx.Client(
@@ -73,7 +74,7 @@ class WikiClient:
                 data = resp.json()
                 if "error" in data:
                     # API-level errors (missing page etc.) are not retried.
-                    raise FetchError(f"Wikipedie vrátila chybu pro stránku '{page}': {data['error'].get('info')}")
+                    raise FetchError(_("Wikipedia returned an error for page '{page}': {error}", page=page, error=data["error"].get("info")))
                 return data["parse"]["text"]
             except FetchError:
                 raise
@@ -82,7 +83,7 @@ class WikiClient:
                 log.warning("Fetch of '%s' failed: %s", page, exc)
                 if attempt < self.settings.max_retries:
                     time.sleep(min(2**attempt, 10))
-        raise FetchError(f"Nepodařilo se stáhnout stránku '{page}' z Wikipedie: {last_error}")
+        raise FetchError(_("Failed to download page '{page}' from Wikipedia: {error}", page=page, error=last_error))
 
     def close(self) -> None:
         self._client.close()

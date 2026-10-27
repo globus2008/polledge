@@ -4,16 +4,15 @@ Analýza volebních sázek. PollEdge spočítá z předvolebních průzkumů pra
 
 > **Aplikace jen analyzuje a doporučuje. Nikdy sama nesází** a nepřihlašuje se k žádné sázkové kanceláři. Doporučené vklady slouží pro virtuální deník (paper trading).
 
-Fáze 1 obsahuje:
+Co aplikace umí:
 
 - sběr průzkumů z Wikipedie,
 - model s Monte Carlo simulací,
-- ruční zadávání kurzů,
+- kurzy zadané ručně (CSV/YAML) nebo **stažené z veřejných stránek kanceláří**,
 - signály, Kellyho kritérium a detekci arbitráže,
 - deník a vyhodnocení,
-- kalibraci modelu na minulých volbách.
-
-Scrapery sázkovek a notifikace přijdou později. Připravená jsou pro ně rozhraní `OddsSource` a `Notifier`.
+- kalibraci modelu na minulých volbách,
+- **pravidelné hlídání** (`watch`) s notifikacemi do konzole nebo e-mailem.
 
 ## Instalace
 
@@ -36,10 +35,12 @@ polledge update-polls                                   # stáhne průzkumy aktu
 polledge model -e fr_pres_2027                          # pravděpodobnosti z modelu
 polledge model -e fr_pres_2027 -m share_over:LE_PEN:30  # navíc vlastní trh
 polledge import-odds data/odds/fr_pres_2027_sample.csv  # načte kurzy a vypíše marže
+polledge fetch-odds                                     # stáhne kurzy z nakonfigurovaných kanceláří
 polledge signals -e fr_pres_2027                        # porovnání, signály, arbitráže
 polledge signals -e fr_pres_2027 --record               # signály uloží jako virtuální sázky
 polledge journal -e fr_pres_2027                        # obsah deníku
 polledge settle -e fr_pres_2027 -r vysledek.yaml        # po volbách: vyhodnocení
+polledge watch                                          # průzkumy + kurzy + signály + notifikace v jednom běhu
 ```
 
 Pozor: `data/odds/fr_pres_2027_sample.csv` obsahuje **smyšlené ukázkové kurzy**. Před skutečnou analýzou je nahraď kurzy, které sám opíšeš z nabídky kanceláří.
@@ -53,6 +54,8 @@ Globální volby: `-c/--config cesta/settings.yaml` (jiná konfigurace) a `-v/--
 | `update-polls [-e ID] [--history] [--force]` | Stáhne stránky přes MediaWiki API, naparsuje tabulky a uloží je do SQLite s deduplikací. Stránky se cachují v `data/cache/` (výchozí platnost 6 h). `--force` cache obejde, `--history` stáhne i historické volby. |
 | `model -e ID [-n RUNS] [--as-of YYYY-MM-DD] [-m TRH] [--save]` | Spočítá vážený průměr a Monte Carlo simulaci a vypíše tabulky. `--save` uloží pravděpodobnosti do deníku pro pozdější Brierovo skóre. |
 | `import-odds SOUBOR [-e ID]` | Načte kurzy z CSV nebo YAML, uloží je do DB a vypíše marži každé kanceláře. |
+| `fetch-odds [-e ID] [-b KANCELÁŘ] [--force]` | Stáhne kurzy z veřejných stránek kanceláří podle sekce `bookmakers` ve volbách a uloží je s časem stažení. |
+| `watch [-e ID] [--no-polls]` | Jeden běh hlídání: aktualizuje průzkumy a kurzy, přepočítá model, nové signály uloží do deníku a pošle notifikaci. |
 | `signals -e ID [--record] [--only-signals]` | Pro každý výsledek najde nejlepší kurz, spočítá edge a vklad podle Kellyho a ukáže arbitráže. |
 | `journal -e ID` | Vypíše virtuální sázky. |
 | `settle -e ID [-r vysledek.yaml]` | Zapíše skutečný výsledek a vyhodnotí sázky: P/L, ROI a Brierovo skóre modelu a trhu. |
@@ -98,6 +101,7 @@ first_round:
     require: []               # řádek musí obsahovat všechny tyto kandidáty
     exclude: []               # ...a žádného z těchto
   skip_rows: ["election", "result", "exit poll"]   # řádky s výsledkem a exit polly
+  row_total: [85, 110]        # povolený součet řádku v %; širší jen pro ankety s více odpověďmi
 
 runoff:                       # jen pro two_round: H2H tabulky, jedna dvojice na tabulku
   tables:
@@ -105,6 +109,12 @@ runoff:                       # jen pro two_round: H2H tabulky, jedna dvojice na
 
 model:                        # volitelné přepsání parametrů jen pro tyto volby
   half_life_days: 21
+
+bookmakers:                   # volitelné: odkud stahovat kurzy (fetch-odds, watch)
+  betano:
+    pages: ["https://www.betano.cz/..."]   # veřejná stránka události nebo ligy
+    markets: {"Vítěz": winner}             # název trhu u kanceláře -> náš typ trhu
+    selections: {"A. Babiš": BABIS}        # jen když se jméno neshoduje se jménem/aliasem kandidáta
 
 result:                       # jen u historických voleb (pro kalibraci a backtest)
   first_round: {ANO: 34.5, SPOLU: 23.4}
@@ -150,6 +160,71 @@ Typy trhů (`market`) a jejich výsledky (`outcome`):
 | `share_over:ID:30` | `over` / `under` | podíl nad, nebo pod 30 % |
 
 Kurzy jsou desetinné. Platí vždy nejnovější kurz dané kanceláře pro daný výsledek.
+
+### Stahování kurzů z kanceláří
+
+`polledge fetch-odds` projde volby se sekcí `bookmakers`, stáhne uvedené veřejné stránky a kurzy uloží s časem stažení. Každé stažení tak přidává do databáze historii kurzů, kterou lze později použít v backtestu.
+
+Pravidla stahování (`scraping` v `settings.yaml`):
+
+- jen veřejné stránky nabídky, nikdy účet, přihlášení ani podávání sázek,
+- respektuje `robots.txt` včetně `Crawl-delay`, mezi dotazy na jeden server drží rozestup (výchozí 5 s),
+- stránky cachuje (výchozí 30 min); kurzy z cache mají čas původního stažení, takže nevznikají duplicity,
+- když web automatický přístup odmítne (HTTP 403), aplikace to oznámí a ochranu **neobchází**.
+
+Stav podpory kanceláří (říjen 2026):
+
+| Kancelář | Stav |
+|---|---|
+| **Betano** | podporováno: nabídka je jako JSON přímo ve veřejné stránce |
+| Tipsport | nepodporováno: web vrací automatickým klientům HTTP 403 |
+| Chance | nepodporováno: web vrací automatickým klientům HTTP 403 |
+| Fortuna | nepodporováno: nabídku načítá JavaScript z interního API |
+
+U nepodporovaných kanceláří zadávej kurzy ručně přes `import-odds`. Obojí se v porovnání kombinuje a vybírá se nejlepší kurz.
+
+Nový scraper je třída `OddsSource` zaregistrovaná v `src/polledge/odds/scrapers/__init__.py` (viz Betano v `betano.py`). Ke stahování používá `PoliteFetcher` a k převodu názvů na naše ID `NameMapper`.
+
+**Volby s živými kurzy:** FR 2027 zatím žádná podporovaná kancelář nevypisuje. Betano i Fortuna nabízejí **české prezidentské volby 2028** (`cz_pres_2028`), které jsou proto nakonfigurované se stahováním z Betana. Pozor, průzkumy k nim jsou slabé:
+
+- je jich jen pár,
+- STEM/MARK se ptá „koho byste mohl volit“ s více odpověďmi a řádky dávají v součtu kolem 150 %; model je přepočítá na 100 %, takže jde jen o hrubý odhad relativní podpory,
+- do voleb zbývá přes rok.
+
+**Signály pro CZ 2028 proto neber jako spolehlivé.**
+
+Když kancelář nevypisuje kandidáta, kterému model dává víc než 2 %, považuje se její trh za neúplný. Pravděpodobnost trhu bez marže se pak nepočítá, edge a signály ano. Kandidáti, které kancelář vypisuje, ale model pro ně nemá průzkumy, se zobrazí jako „není v modelu“ a nikdy z nich nevznikne signál.
+
+### Hlídání a notifikace
+
+`polledge watch` udělá v jednom běhu: aktualizaci průzkumů (z cache, pokud je čerstvá) → stažení kurzů → model → porovnání. Nové signály uloží do deníku a pošle notifikaci. Stejnou sázku za stejný kurz hlásí jen jednou.
+
+Kanály nastavíš v `notify` v `settings.yaml`:
+
+```yaml
+notify:
+  channels: [console, email]
+  email:
+    smtp_host: smtp.seznam.cz
+    smtp_port: 587
+    use_tls: true
+    username: muj@ucet.cz
+    password_env: POLLEDGE_SMTP_PASSWORD   # heslo jen v proměnné prostředí
+    sender: muj@ucet.cz
+    recipients: [muj@ucet.cz]
+```
+
+Pravidelné spouštění ve Windows (Plánovač úloh), např. každou hodinu:
+
+```powershell
+schtasks /Create /SC HOURLY /TN PollEdge /TR "C:\scr\PollEdge\.venv\Scripts\polledge.exe --config C:\scr\PollEdge\config\settings.yaml watch"
+```
+
+Na Linuxu/macOS stačí cron: `0 * * * * cd /cesta/PollEdge && .venv/bin/polledge watch`.
+
+### Jazyk výstupů
+
+Zdrojový kód je celý anglicky. České texty jsou v katalogu `src/polledge/locales/cs.yaml` (klíč je anglický text z kódu). Jazyk výstupů nastavíš v `settings.yaml` (`language: cs` nebo `en`). Nápovědu `--help` řídí proměnná prostředí `POLLEDGE_LANG`, protože se sestavuje dřív, než se nastavení načte. Test `tests/test_i18n.py` hlídá, že katalog obsahuje všechny texty z kódu se stejnými zástupnými symboly.
 
 ## Jak model funguje
 
@@ -217,26 +292,14 @@ config/elections/history/*.yaml historické volby s výsledkem (kalibrace)
 src/polledge/polls/             MediaWiki klient s cache, parser tabulek, čištění, DB
 src/polledge/model/             vážený průměr, house effects, simulace, trhy
 src/polledge/odds/              OddsSource (rozhraní), CSV/YAML zdroje, marže
+src/polledge/odds/scrapers/     stahování kurzů: PoliteFetcher, mapování názvů, Betano
 src/polledge/signals/           edge, arbitráž, Kelly
 src/polledge/journal/           deník, vyhodnocení, Brierovo skóre
 src/polledge/calibration/       backtest, metriky, grid search
-src/polledge/notify/            rozhraní Notifier (pro fázi 2)
+src/polledge/notify/            notifikace (konzole, e-mail)
+src/polledge/locales/cs.yaml    české texty výstupů
 tests/                          pytest (HTML fixture z Wikipedie v tests/fixtures)
 ```
-
-### Rozšíření o scraper kanceláře (fáze 2)
-
-```python
-from polledge.odds.base import OddsQuote, OddsSource
-
-class TipsportSource(OddsSource):
-    name = "tipsport"
-
-    def fetch(self, election_id=None) -> list[OddsQuote]:
-        ...  # stáhni nabídku a převeď ji na OddsQuote s ID trhů podle tabulky výše
-```
-
-Zbytek aplikace (ukládání, marže, signály, deník) funguje beze změny.
 
 ## Testy
 
@@ -244,6 +307,18 @@ Zbytek aplikace (ukládání, marže, signály, deník) funguje beze změny.
 pytest
 ```
 
-Testy pokrývají parsování dat a procent, odstranění marže, edge a Kellyho kritérium, arbitráž, součet simulovaných podílů na 100 %, parser nad skutečnou HTML fixture, chování při výpadku sítě, deník a vyhodnocení a kalibraci (včetně kontroly, že model nevidí budoucí průzkumy).
+Testy pokrývají:
+
+- parsování dat a procent, parser nad skutečnou HTML fixture z Wikipedie,
+- odstranění marže, edge a Kellyho kritérium, arbitráž,
+- součet simulovaných podílů na 100 %,
+- chování při výpadku sítě,
+- deník a vyhodnocení,
+- kalibraci, včetně kontroly, že model nevidí budoucí průzkumy,
+- scraper Betano nad uloženou stránkou a pravidla stahování (`robots.txt`, Crawl-delay, cache, žádné obcházení 403),
+- notifikace,
+- úplnost českého katalogu.
+
+Testy nepotřebují síť.
 
 Data z Wikipedie jsou pod licencí CC BY-SA.

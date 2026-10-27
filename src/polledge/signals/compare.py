@@ -36,6 +36,7 @@ class OutcomeComparison:
     edge: float | None
     stake: float
     is_signal: bool
+    in_model: bool = True  # False: the bookmaker lists it, but the model has no polls for it
 
 
 @dataclass
@@ -62,10 +63,15 @@ def compare_market(
     outcomes = []
     best_odds: dict[str, float] = {}
     for outcome in sorted(set(model_probs) | {o for b in books for o in b.odds}):
+        in_model = outcome in model_probs
         p = model_probs.get(outcome, 0.0)
         quoted = {b.bookmaker: b.odds[outcome] for b in books if outcome in b.odds}
         fair = [b.fair[outcome] for b in books if b.fair is not None and outcome in b.fair]
-        if quoted:
+        if quoted and not in_model:
+            bookmaker, best = max(quoted.items(), key=lambda kv: kv[1])
+            best_odds[outcome] = best
+            e, stake = None, 0.0
+        elif quoted:
             bookmaker, best = max(quoted.items(), key=lambda kv: kv[1])
             best_odds[outcome] = best
             e = edge(p, best)
@@ -85,6 +91,7 @@ def compare_market(
                 edge=e,
                 stake=stake,
                 is_signal=e is not None and e > settings.edge_threshold and stake > 0,
+                in_model=in_model,
             )
         )
     covered = bool(best_odds) and is_complete(market, best_odds, set(model_probs), model_probs)

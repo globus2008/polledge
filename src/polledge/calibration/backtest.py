@@ -18,6 +18,7 @@ from polledge.model.simulate import simulate_election
 from polledge.odds.base import OddsQuote
 from polledge.polls.types import Poll
 from polledge.services import build_comparisons
+from polledge.i18n import _
 
 log = logging.getLogger(__name__)
 
@@ -58,7 +59,7 @@ def actual_winner(election: ElectionConfig) -> str:
 
 def require_result(election: ElectionConfig) -> ElectionResult:
     if election.result is None or not election.result.first_round:
-        raise PollEdgeError(f"Volby {election.id} nemají v konfiguraci výsledek (pole result.first_round)")
+        raise PollEdgeError(_("Election {id} has no result in its config (field result.first_round)", id=election.id))
     return election.result
 
 
@@ -139,7 +140,7 @@ def backtest_with_odds(
     result = require_result(election)
     days = sorted({q.timestamp.date() for q in quotes if q.timestamp.date() < election.election_date})
     if not days:
-        raise PollEdgeError("V souboru nejsou žádné kurzy z doby před volbami")
+        raise PollEdgeError(_("The file contains no odds from before the election"))
     staked = profit = 0.0
     n_bets = 0
     model_pairs: list[tuple[float, int]] = []

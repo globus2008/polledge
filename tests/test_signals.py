@@ -68,6 +68,14 @@ def test_compare_market_picks_best_odds_and_signals():
     assert comp.is_arbitrage
 
 
+def test_outcome_unknown_to_model_is_never_a_signal():
+    quotes = _quotes("winner", [("A", "X", 1.5), ("A", "Celebrity", 500.0)])
+    comp = compare_market("winner", {"X": 1.0}, latest_books(quotes), SignalSettings())
+    celebrity = next(o for o in comp.outcomes if o.outcome == "Celebrity")
+    assert not celebrity.in_model and celebrity.edge is None and not celebrity.is_signal
+    assert celebrity.best_odds == 500.0
+
+
 def test_no_arbitrage_if_market_not_covered():
     market = "qualify_runoff:X"
     comp = compare_market(market, {"yes": 0.5, "no": 0.5}, latest_books(_quotes(market, [("A", "yes", 3.0)])),

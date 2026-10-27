@@ -12,6 +12,7 @@ import yaml
 from polledge.errors import PollEdgeError
 from polledge.model.markets import BINARY_OUTCOMES, parse_market
 from polledge.odds.base import OddsQuote, OddsSource
+from polledge.i18n import _
 
 log = logging.getLogger(__name__)
 
@@ -28,26 +29,26 @@ def _parse_timestamp(value: object) -> datetime:
             return datetime.strptime(text, fmt)
         except ValueError:
             continue
-    raise ValueError(f"neznámý formát data a času '{text}'")
+    raise ValueError(_("unknown date/time format '{value}'", value=text))
 
 
 def quote_from_record(record: dict, where: str) -> OddsQuote:
     missing = [f for f in REQUIRED_FIELDS if record.get(f) in (None, "")]
     if missing:
-        raise ValueError(f"{where}: chybí pole {', '.join(missing)}")
+        raise ValueError(_("{where}: missing fields {fields}", where=where, fields=", ".join(missing)))
     market = str(record["market"]).strip()
     spec = parse_market(market)  # validates the market id
     outcome = str(record["outcome"]).strip()
     if spec.kind in BINARY_OUTCOMES:
         outcome = outcome.lower()
         if outcome not in BINARY_OUTCOMES[spec.kind]:
-            raise ValueError(f"{where}: výsledek '{outcome}' u trhu {market} musí být {'/'.join(BINARY_OUTCOMES[spec.kind])}")
+            raise ValueError(_("{where}: outcome '{outcome}' of market {market} must be {allowed}", where=where, outcome=outcome, market=market, allowed="/".join(BINARY_OUTCOMES[spec.kind])))
     try:
         odds = float(str(record["odds"]).replace(",", "."))
     except ValueError:
-        raise ValueError(f"{where}: kurz '{record['odds']}' není číslo") from None
+        raise ValueError(_("{where}: odds '{odds}' is not a number", where=where, odds=record["odds"])) from None
     if odds <= 1.0:
-        raise ValueError(f"{where}: desetinný kurz musí být > 1 (je {odds})")
+        raise ValueError(_("{where}: decimal odds must be > 1 (got {odds})", where=where, odds=odds))
     return OddsQuote(
         election_id=str(record["election_id"]).strip(),
         bookmaker=str(record["bookmaker"]).strip(),
@@ -69,7 +70,7 @@ class _FileOddsSource(OddsSource):
 
     def fetch(self, election_id: str | None = None) -> list[OddsQuote]:
         if not self.path.exists():
-            raise PollEdgeError(f"Soubor s kurzy nenalezen: {self.path}")
+            raise PollEdgeError(_("Odds file not found: {path}", path=self.path))
         quotes = []
         self.errors = []
         for where, record in self._records():
@@ -100,7 +101,7 @@ class CsvOddsSource(_FileOddsSource):
                                     delimiter=delimiter)
             missing = [f for f in REQUIRED_FIELDS if f not in (reader.fieldnames or [])]
             if missing:
-                raise PollEdgeError(f"CSV {self.path} nemá sloupce: {', '.join(missing)}")
+                raise PollEdgeError(_("CSV {path} lacks columns: {columns}", path=self.path, columns=", ".join(missing)))
             return [(f"{self.path.name}:{i + 2}", row) for i, row in enumerate(reader)]
 
 
@@ -143,4 +144,4 @@ def source_for_path(path: Path) -> OddsSource:
         return CsvOddsSource(path)
     if suffix in (".yaml", ".yml"):
         return YamlOddsSource(path)
-    raise PollEdgeError(f"Nepodporovaný formát souboru s kurzy: {path.suffix} (použij .csv nebo .yaml)")
+    raise PollEdgeError(_("Unsupported odds file format: {suffix} (use .csv or .yaml)", suffix=path.suffix))

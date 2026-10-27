@@ -7,11 +7,12 @@ from datetime import datetime
 
 from polledge.model.markets import BINARY_OUTCOMES, parse_market
 from polledge.odds.base import OddsQuote
+from polledge.i18n import _
 
 
 def implied_probability(odds: float) -> float:
     if odds <= 1.0:
-        raise ValueError("Desetinný kurz musí být > 1")
+        raise ValueError(_("Decimal odds must be > 1"))
     return 1.0 / odds
 
 

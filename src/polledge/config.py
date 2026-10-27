@@ -11,6 +11,7 @@ import yaml
 from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from polledge.errors import ConfigError
+from polledge.i18n import _
 
 log = logging.getLogger(__name__)
 
@@ -47,10 +48,37 @@ class SignalSettings(BaseModel):
     kelly_fraction: float = 0.25
     bankroll: float = 10_000.0
     max_stake_pct: float | None = 0.05
-    currency: str = "Kč"
+    currency: str = "CZK"
+
+
+class ScrapingSettings(BaseModel):
+    """Polite HTTP access to bookmaker pages (public offer pages only, never accounts)."""
+
+    user_agent: str = "Mozilla/5.0 (compatible; PollEdge/0.2; personal odds research)"
+    cache_ttl_minutes: float = 30.0
+    min_delay_seconds: float = 5.0  # between requests to one host; robots.txt Crawl-delay wins if longer
+    timeout_seconds: float = 20.0
+    max_retries: int = 2
+    respect_robots_txt: bool = True
+
+
+class EmailSettings(BaseModel):
+    smtp_host: str = ""
+    smtp_port: int = 587
+    use_tls: bool = True
+    username: str = ""
+    password_env: str = "POLLEDGE_SMTP_PASSWORD"  # the password is read from this environment variable
+    sender: str = ""
+    recipients: list[str] = []
+
+
+class NotifySettings(BaseModel):
+    channels: list[Literal["console", "email"]] = ["console"]
+    email: EmailSettings = EmailSettings()
 
 
 class Settings(BaseModel):
+    language: Literal["en", "cs"] = "cs"  # language of the output (catalog in polledge/locales)
     database: Path = Path("data/polledge.db")
     cache_dir: Path = Path("data/cache")
     log_dir: Path = Path("logs")
@@ -59,6 +87,8 @@ class Settings(BaseModel):
     wikipedia: WikipediaSettings = WikipediaSettings()
     model: ModelParams = ModelParams()
     signals: SignalSettings = SignalSettings()
+    scraping: ScrapingSettings = ScrapingSettings()
+    notify: NotifySettings = NotifySettings()
 
     base_dir: Path = Path(".")
     # Model params from settings.yaml before calibrated.yaml overrides (baseline for calibration).
@@ -92,7 +122,7 @@ class TableSelector(BaseModel):
 class ColumnNames(BaseModel):
     pollster: str = "Polling firm"
     fieldwork: str = "Fieldwork date"
-    sample_size: str = "Sample size"
+    sample_size: str | None = "Sample size"  # None: the table has no sample column
     # Non-candidate columns to drop (matched by prefix, case/accent-insensitive).
     ignore: list[str] = [
         "Lead", "Abs", "Undecided", "Margin", "Ref", "Spread", "Turnout", "No vote", "Don't know",
@@ -113,6 +143,19 @@ class RoundConfig(BaseModel):
     scenario: Scenario = Scenario()
     # Rows whose pollster cell contains one of these (e.g. the official result row) are skipped.
     skip_rows: list[str] = ["election", "result", "exit poll"]
+    # Accepted sum of shares in one row (%). Rows outside are skipped; rows above 100 are rescaled
+    # by the model. Widen only for multi-choice "could vote for" polls - they are a rough proxy.
+    row_total: tuple[float, float] = (85.0, 110.0)
+
+
+class BookmakerConfig(BaseModel):
+    """Where a bookmaker lists this election and how its names map to ours."""
+
+    pages: list[str]
+    # Bookmaker market name -> our market id, e.g. {"Vítěz": "winner"}. Unlisted markets are ignored.
+    markets: dict[str, str]
+    # Extra selection-name aliases, e.g. {"Pavel P.": PAVEL}; candidate names/aliases are used automatically.
+    selections: dict[str, str] = {}
 
 
 class ElectionResult(BaseModel):
@@ -131,22 +174,27 @@ class ElectionConfig(BaseModel):
     first_round: RoundConfig
     runoff: RoundConfig | None = None
     model: dict[str, Any] = {}
+    bookmakers: dict[str, BookmakerConfig] = {}
     result: ElectionResult | None = None
 
     @model_validator(mode="after")
     def _check(self) -> "ElectionConfig":
         if OTHER in self.candidates:
-            raise ValueError(f"'{OTHER}' je rezervované ID")
+            raise ValueError(f"'{OTHER}' is a reserved id")
         known = set(self.candidates)
         for rnd in filter(None, [self.first_round, self.runoff]):
             unknown = (set(rnd.scenario.require) | set(rnd.scenario.exclude)) - known
             if unknown:
-                raise ValueError(f"scénář odkazuje na neznámé kandidáty: {sorted(unknown)}")
+                raise ValueError(f"scenario refers to unknown candidates: {sorted(unknown)}")
+        for name, book in self.bookmakers.items():
+            bad = set(book.selections.values()) - known
+            if bad:
+                raise ValueError(f"bookmakers.{name}.selections refers to unknown candidates: {sorted(bad)}")
         return self
 
     def candidate_name(self, cid: str) -> str:
         if cid == OTHER:
-            return "Ostatní"
+            return _("Others")
         return self.candidates[cid].name if cid in self.candidates else cid
 
 
@@ -155,11 +203,11 @@ def read_yaml(path: Path) -> dict[str, Any]:
         with path.open(encoding="utf-8") as fh:
             data = yaml.safe_load(fh) or {}
     except FileNotFoundError as exc:
-        raise ConfigError(f"Soubor nenalezen: {path}") from exc
+        raise ConfigError(_("File not found: {path}", path=path)) from exc
     except yaml.YAMLError as exc:
-        raise ConfigError(f"Chybný YAML v souboru {path}: {exc}") from exc
+        raise ConfigError(_("Invalid YAML in {path}: {error}", path=path, error=exc)) from exc
     if not isinstance(data, dict):
-        raise ConfigError(f"Soubor {path} musí obsahovat YAML slovník")
+        raise ConfigError(_("File {path} must contain a YAML mapping", path=path))
     return data
 
 
@@ -173,7 +221,7 @@ def load_settings(path: Path | None = None) -> Settings:
     try:
         settings = Settings(**data)
     except ValidationError as exc:
-        raise ConfigError(f"Neplatné nastavení v {path}: {format_validation(exc)}") from exc
+        raise ConfigError(_("Invalid settings in {path}: {error}", path=path, error=format_validation(exc))) from exc
     settings.base_dir = path.parent.parent if path.parent.name == "config" else path.parent
     settings.uncalibrated_model = settings.model
     calibrated = settings.resolve(settings.calibrated_file)
@@ -184,7 +232,7 @@ def load_settings(path: Path | None = None) -> Settings:
             try:
                 settings.model = ModelParams(**{**settings.model.model_dump(), **overrides})
             except ValidationError as exc:
-                raise ConfigError(f"Neplatné parametry v {calibrated}: {format_validation(exc)}") from exc
+                raise ConfigError(_("Invalid parameters in {path}: {error}", path=calibrated, error=format_validation(exc))) from exc
     return settings
 
 
@@ -192,7 +240,7 @@ def load_election(path: Path) -> ElectionConfig:
     try:
         return ElectionConfig(**read_yaml(path))
     except ValidationError as exc:
-        raise ConfigError(f"Neplatná konfigurace voleb v {path}: {format_validation(exc)}") from exc
+        raise ConfigError(_("Invalid election config in {path}: {error}", path=path, error=format_validation(exc))) from exc
 
 
 def discover_elections(settings: Settings, include_history: bool = False) -> dict[str, ElectionConfig]:
@@ -203,7 +251,7 @@ def discover_elections(settings: Settings, include_history: bool = False) -> dic
     for path in sorted(root.glob(pattern)):
         cfg = load_election(path)
         if cfg.id in found:
-            raise ConfigError(f"Duplicitní ID voleb '{cfg.id}' ({path} a {paths[cfg.id]})")
+            raise ConfigError(_("Duplicate election id '{id}' ({path} and {other})", id=cfg.id, path=path, other=paths[cfg.id]))
         found[cfg.id] = cfg
         paths[cfg.id] = path
     return found
@@ -212,8 +260,8 @@ def discover_elections(settings: Settings, include_history: bool = False) -> dic
 def get_election(settings: Settings, election_id: str) -> ElectionConfig:
     elections = discover_elections(settings, include_history=True)
     if election_id not in elections:
-        available = ", ".join(sorted(elections)) or "žádné"
-        raise ConfigError(f"Volby '{election_id}' nejsou nakonfigurované. Dostupné: {available}")
+        available = ", ".join(sorted(elections)) or _("none")
+        raise ConfigError(_("Election '{id}' is not configured. Available: {available}", id=election_id, available=available))
     return elections[election_id]
 
 
@@ -224,4 +272,4 @@ def model_params_for(settings: Settings, election: ElectionConfig) -> ModelParam
     try:
         return ModelParams(**{**settings.model.model_dump(), **election.model})
     except ValidationError as exc:
-        raise ConfigError(f"Neplatné parametry modelu u voleb {election.id}: {format_validation(exc)}") from exc
+        raise ConfigError(_("Invalid model parameters for election {id}: {error}", id=election.id, error=format_validation(exc))) from exc

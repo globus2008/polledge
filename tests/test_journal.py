@@ -44,6 +44,17 @@ def test_poll_dedup(session):
     assert loaded.shares == {"A": 52.0, "B": 48.0}
 
 
+def test_stale_scenario_replaced(session):
+    old = Poll("e", "first", "Ifop", date(2026, 10, 1), 1000, {"A": 50.0, "OTHER": 50.0}, scenario="A")
+    other_poll = Poll("e", "first", "Elabe", date(2026, 9, 1), 1000, {"A": 40.0, "B": 60.0}, scenario="A|B")
+    upsert_polls(session, [old, other_poll])
+    # After a config change the same poll is parsed with a different line-up key.
+    new = Poll("e", "first", "Ifop", date(2026, 10, 1), 1000, {"A": 50.0, "B": 50.0}, scenario="A|B")
+    upsert_polls(session, [new])
+    polls = {(p.pollster, p.scenario) for p in load_polls(session, "e")}
+    assert polls == {("Ifop", "A|B"), ("Elabe", "A|B")}  # stale Ifop row gone, unrelated poll kept
+
+
 def _comparison():
     market = "qualify_runoff:C"
     quotes = [OddsQuote("e", "Tipsport", market, "yes", 3.0, datetime(2026, 10, 1)),
@@ -54,8 +65,8 @@ def _comparison():
 
 def test_record_and_settle(session):
     comp = _comparison()
-    assert record_signals(session, "e", [comp]) == 1
-    assert record_signals(session, "e", [comp]) == 0  # same open bet is not duplicated
+    assert len(record_signals(session, "e", [comp])) == 1
+    assert record_signals(session, "e", [comp]) == []  # same open bet is not duplicated
     record_snapshot(session, "e", {"qualify_runoff:C": {"yes": 0.45, "no": 0.55}}, {},
                     {"qualify_runoff:C": {"yes": 0.30, "no": 0.70}})
 

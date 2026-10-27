@@ -1,0 +1,66 @@
+# České prezidentské volby 2028
+# Datum 1. kola je odhad (ústava: nejpozději v lednu 2028; Betano uvádí 28. 1. 2028, což odpovídá 2. kolu).
+id: cz_pres_2028
+name: "Česko – prezidentské volby 2028"
+type: two_round
+election_date: 2028-01-14
+# Samostatná stránka "Opinion polling for ..." zatím neexistuje, průzkumy jsou v hlavním článku.
+wiki_page: "2028 Czech presidential election"
+default_sample_size: 1000   # tabulky velikost vzorku neuvádějí
+
+candidates:
+  PAVEL: {name: "Petr Pavel"}
+  BABIS: {name: "Andrej Babiš"}
+  EBEN: {name: "Marek Eben"}
+  HAVLICEK: {name: "Karel Havlíček"}
+  OKAMURA: {name: "Tomio Okamura"}
+  NERUDOVA: {name: "Danuše Nerudová"}
+  SCHILLEROVA: {name: "Alena Schillerová"}
+  DRAHOS: {name: "Jiří Drahoš"}
+  FISCHER: {name: "Pavel Fischer"}
+  TUREK: {name: "Filip Turek"}
+  VYSTRCIL: {name: "Miloš Vystrčil"}
+  KALOUSEK: {name: "Miroslav Kalousek"}
+  KLAUS: {name: "Václav Klaus"}
+  FIALA: {name: "Petr Fiala"}
+  RAKUSAN: {name: "Vít Rakušan"}
+  KUBA: {name: "Martin Kuba"}
+  NEMCOVA: {name: "Miroslava Němcová"}
+  VASUT: {name: "Marek Vašut"}
+  VONDRACEK: {name: "Radek Vondráček"}
+  MACINKA: {name: "Petr Macinka"}
+  ZEMAN: {name: "Miloš Zeman"}
+
+first_round:
+  tables:
+    - heading: ["Opinion polls", "First round"]
+  columns:
+    pollster: "Agency"
+    fieldwork: "Date"
+    sample_size: null
+  # POZOR: průzkumy STEM/MARK jsou "koho byste mohl volit" (víc odpovědí, součet ~150 %).
+  # Model řádky přepočte na 100 %, takže jde jen o hrubý odhad relativní podpory.
+  row_total: [85, 200]
+  scenario:
+    require: [PAVEL, BABIS, HAVLICEK, EBEN]
+
+runoff:
+  tables:
+    - heading: ["Opinion polls", "Second round"]
+  columns:
+    pollster: "Agency"
+    fieldwork: "Date"
+    sample_size: null
+
+# Málo průzkumů -> delší poločas, aby průměr nestál na jediném čísle.
+model:
+  half_life_days: 30
+  max_poll_age_days: 540
+
+# Kde kancelář tyto volby vypisuje (veřejné stránky nabídky) a jak se jmenují trhy.
+bookmakers:
+  betano:
+    pages:
+      - "https://www.betano.cz/zapas-sance/ceske-prezidentske-volby-2028/31772398/"
+    markets:
+      "Vítěz": winner
