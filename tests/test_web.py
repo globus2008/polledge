@@ -63,6 +63,14 @@ def test_signals_page_shows_signals(database, monkeypatch):
     assert len(at.dataframe) >= 3  # one table per market with odds
 
 
+def test_environment_overrides_secrets_file(database, monkeypatch):
+    # A developer's .streamlit/secrets.toml must never redirect tests to the production database.
+    monkeypatch.setenv("POLLEDGE_DATABASE_URL", database)
+    from polledge.web.state import secret
+
+    assert secret("POLLEDGE_DATABASE_URL") == database
+
+
 def test_login_required_for_hosted_database(monkeypatch, database):
     # A non-SQLite URL without APP_PASSWORD must refuse to run (checked before any query).
     from polledge.web import state

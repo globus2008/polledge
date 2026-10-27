@@ -24,12 +24,13 @@ SECRET_NAMES = ("POLLEDGE_DATABASE_URL", "POLLEDGE_SMTP_PASSWORD")
 
 
 def secret(name: str) -> str | None:
-    """Streamlit secrets (cloud, .streamlit/secrets.toml) first, then environment variables."""
+    """Environment variable first (explicit override, used by tests), then Streamlit secrets."""
+    if os.environ.get(name):
+        return os.environ[name]
     try:
-        value = st.secrets.get(name)
+        return st.secrets.get(name)
     except Exception:  # no secrets file at all
-        value = None
-    return value or os.environ.get(name)
+        return None
 
 
 @st.cache_resource(show_spinner=False)
