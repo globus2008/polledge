@@ -7,6 +7,7 @@ from datetime import date, datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from polledge.timeutil import utcnow
 from polledge.db import PollRow, PollShareRow
 from polledge.polls.types import Poll
 
@@ -19,7 +20,7 @@ def upsert_polls(session: Session, polls: list[Poll]) -> tuple[int, int]:
     Polls that are missing from the new data altogether are kept.
     """
     inserted = updated = 0
-    now = datetime.now()
+    now = utcnow()
     fresh: dict[tuple, set[str]] = {}
     for poll in polls:
         fresh.setdefault((poll.election_id, poll.round, poll.pollster, poll.end_date), set()).add(poll.scenario)

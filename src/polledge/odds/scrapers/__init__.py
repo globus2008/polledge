@@ -6,11 +6,13 @@ from polledge.config import BookmakerConfig, ElectionConfig
 from polledge.errors import ConfigError
 from polledge.odds.base import OddsSource
 from polledge.odds.scrapers.betano import BetanoSource
+from polledge.odds.scrapers.polymarket import PolymarketSource
 from polledge.odds.scrapers.http import PoliteFetcher, ScrapeError
 from polledge.i18n import _
 
 SCRAPERS = {
     "betano": BetanoSource,
+    "polymarket": PolymarketSource,
 }
 
 # Bookmakers checked and not supported, with the reason shown to the user.

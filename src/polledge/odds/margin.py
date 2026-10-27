@@ -50,17 +50,19 @@ class BookMarket:
 
 
 def is_complete(market: str, odds: dict[str, float], expected: set[str] | None = None,
-                model_probs: dict[str, float] | None = None) -> bool:
+                model_probs: dict[str, float] | None = None, min_total: float = 1.0) -> bool:
     """Whether a bookmaker quotes all outcomes of the market (needed for normalisation).
 
     Binary markets need both sides. Multi-outcome markets must have implied
-    probabilities summing to at least 1 and, if model probabilities are given,
-    the outcomes missing from the book may carry at most 2 % of model mass.
+    probabilities summing to at least `min_total` (1.0 for bookmakers; exchanges
+    without margin hover around 1.0, so they get a small tolerance) and, if model
+    probabilities are given, the outcomes missing from the book may carry at most
+    2 % of model mass.
     """
     kind = parse_market(market).kind
     if kind in BINARY_OUTCOMES:
         return set(BINARY_OUTCOMES[kind]) <= set(odds)
-    if overround(list(odds.values())) < 0:
+    if 1.0 + overround(list(odds.values())) < min_total:
         return False
     if expected is not None and model_probs is not None:
         missing = expected - set(odds)
@@ -68,8 +70,16 @@ def is_complete(market: str, odds: dict[str, float], expected: set[str] | None =
     return True
 
 
-def latest_books(quotes: list[OddsQuote], model_probs: dict[str, dict[str, float]] | None = None) -> list[BookMarket]:
-    """Group quotes into (bookmaker, market) books, keeping the latest quote per outcome."""
+EXCHANGE_MIN_TOTAL = 0.95
+
+
+def latest_books(quotes: list[OddsQuote], model_probs: dict[str, dict[str, float]] | None = None,
+                 exchanges: list[str] | tuple[str, ...] = ()) -> list[BookMarket]:
+    """Group quotes into (bookmaker, market) books, keeping the latest quote per outcome.
+
+    `exchanges` are margin-free sources (prediction markets) whose prices may sum slightly below 1.
+    """
+    exchange_names = {e.lower() for e in exchanges}
     latest: dict[tuple[str, str, str], dict[str, OddsQuote]] = {}
     for q in quotes:
         book = latest.setdefault((q.election_id, q.bookmaker, q.market), {})
@@ -79,7 +89,8 @@ def latest_books(quotes: list[OddsQuote], model_probs: dict[str, dict[str, float
     for (election_id, bookmaker, market), by_outcome in sorted(latest.items()):
         odds = {o: q.odds for o, q in by_outcome.items()}
         probs = (model_probs or {}).get(market)
-        complete = is_complete(market, odds, set(probs) if probs else None, probs)
+        min_total = EXCHANGE_MIN_TOTAL if bookmaker.lower() in exchange_names else 1.0
+        complete = is_complete(market, odds, set(probs) if probs else None, probs, min_total)
         books.append(
             BookMarket(election_id, bookmaker, market, odds, max(q.timestamp for q in by_outcome.values()), complete)
         )

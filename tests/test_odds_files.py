@@ -21,7 +21,7 @@ def test_csv_source(tmp_path):
     quotes = src.fetch("e")
     assert len(quotes) == 2
     assert quotes[1].outcome == "yes" and quotes[1].odds == 1.25
-    assert quotes[1].timestamp == datetime(2026, 10, 27, 10, 0)
+    assert quotes[1].timestamp == datetime(2026, 10, 27, 9, 0)  # 10:00 Prague (CET) stored as 09:00 UTC
     assert len(src.errors) == 1 and "> 1" in src.errors[0]
 
 

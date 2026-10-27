@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 import httpx
 import pytest
 
+from polledge.timeutil import utcnow
 from polledge.cache import PageCache
 from polledge.config import WikipediaSettings
 from polledge.db import make_session_factory
@@ -48,7 +49,7 @@ def test_network_failure_falls_back_to_stale_cache(tmp_path):
         raise httpx.ConnectError("offline", request=request)
 
     client = _client(tmp_path, broken, ttl=1.0)
-    client.cache.put("Page", "<p>old</p>", fetched_at=datetime.now() - timedelta(hours=5))
+    client.cache.put("Page", "<p>old</p>", fetched_at=utcnow() - timedelta(hours=5))
     assert client.get_page_html("Page") == "<p>old</p>"
 
 

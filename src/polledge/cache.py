@@ -8,6 +8,7 @@ from datetime import datetime
 
 from sqlalchemy.orm import sessionmaker
 
+from polledge.timeutil import utcnow
 from polledge.db import HttpCacheRow
 
 
@@ -17,7 +18,7 @@ class CachedPage:
     fetched_at: datetime
 
     def age_hours(self, now: datetime | None = None) -> float:
-        return ((now or datetime.now()) - self.fetched_at).total_seconds() / 3600
+        return ((now or utcnow()) - self.fetched_at).total_seconds() / 3600
 
 
 class PageCache:
@@ -34,7 +35,7 @@ class PageCache:
             return CachedPage(row.body, row.fetched_at) if row is not None else None
 
     def put(self, url: str, body: str, fetched_at: datetime | None = None) -> datetime:
-        fetched_at = fetched_at or datetime.now()
+        fetched_at = fetched_at or utcnow()
         with self.sessions() as session:
             row = session.get(HttpCacheRow, self._key(url))
             if row is None:

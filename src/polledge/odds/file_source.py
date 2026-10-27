@@ -9,6 +9,7 @@ from pathlib import Path
 
 import yaml
 
+from polledge.timeutil import local_to_utc
 from polledge.errors import PollEdgeError
 from polledge.model.markets import BINARY_OUTCOMES, parse_market
 from polledge.odds.base import OddsQuote, OddsSource
@@ -55,7 +56,8 @@ def quote_from_record(record: dict, where: str) -> OddsQuote:
         market=spec.id,
         outcome=outcome,
         odds=odds,
-        timestamp=_parse_timestamp(record["timestamp"]),
+        # People write local (Prague) time; the database stores UTC.
+        timestamp=local_to_utc(_parse_timestamp(record["timestamp"])),
     )
 
 

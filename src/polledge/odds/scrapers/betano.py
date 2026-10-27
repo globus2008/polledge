@@ -6,14 +6,19 @@ import json
 import logging
 import re
 from datetime import datetime
+from urllib.parse import urljoin
 
 from polledge.config import BookmakerConfig, ElectionConfig
+from polledge.polls.cleaning import normalize_name
 from polledge.odds.base import OddsQuote, OddsSource
 from polledge.odds.scrapers.http import PoliteFetcher, ScrapeError
 from polledge.odds.scrapers.mapping import NameMapper, RawMarket
 from polledge.i18n import _
 
 log = logging.getLogger(__name__)
+
+BASE_URL = "https://www.betano.cz"
+POLITICS_URL = BASE_URL + "/sport/politika/"
 
 _STATE_RE = re.compile(r'window\[\s*["\']initial_state["\']\s*\]\s*=\s*')
 
@@ -45,6 +50,20 @@ def parse_markets(html: str) -> list[RawMarket]:
     return markets
 
 
+def find_leagues(html: str, keywords: list[str]) -> list[str]:
+    """Absolute URLs of competitions on a Betano overview page matching every keyword."""
+    data = extract_state(html)
+    wanted = [normalize_name(k) for k in keywords]
+    urls = []
+    for group in data.get("regionGroups") or []:
+        for region in group.get("regions") or []:
+            for league in region.get("leagues") or []:
+                label = normalize_name(f"{region.get('name', '')} {league.get('name', '')}")
+                if league.get("url") and all(w in label for w in wanted):
+                    urls.append(urljoin(BASE_URL, league["url"]))
+    return urls
+
+
 def _price(value) -> float | None:
     try:
         return float(value)
@@ -62,12 +81,23 @@ class BetanoSource(OddsSource):
         self.force = force
         self.mapper = NameMapper(election, config)
 
+    def discover(self) -> list[str]:
+        """League pages on the politics overview whose region + name contain all discover keywords."""
+        if not self.config.discover:
+            return []
+        return find_leagues(self.fetcher.get(POLITICS_URL, force=self.force), self.config.discover)
+
     def fetch(self, election_id: str | None = None) -> list[OddsQuote]:
         if election_id is not None and election_id != self.election.id:
             return []
         books: dict[str, dict[str, float]] = {}
         fetched: list[datetime] = []
-        for url in self.config.pages:
+        pages = list(dict.fromkeys(self.config.pages + self.discover()))
+        if not pages:
+            # Discovery only and the bookmaker does not list the election (yet): nothing to fetch.
+            log.info("Betano does not list %s yet (keywords %s)", self.election.id, self.config.discover)
+            return []
+        for url in pages:
             html, fetched_at = self.fetcher.get_with_time(url, force=self.force)
             fetched.append(fetched_at)
             raw = parse_markets(html)

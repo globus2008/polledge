@@ -29,7 +29,8 @@ class OutcomeComparison:
     market: str
     outcome: str
     p_model: float
-    p_market: float | None  # average margin-free probability over complete books
+    p_market: float | None  # average margin-free probability over complete books (incl. reference sources)
+    p_reference: float | None  # margin-free probability from reference sources only (e.g. Polymarket)
     best_odds: float | None
     best_bookmaker: str | None
     odds_by_bookmaker: dict[str, float]
@@ -60,13 +61,18 @@ def compare_market(
     market: str, model_probs: dict[str, float], books: list[BookMarket], settings: SignalSettings
 ) -> MarketComparison:
     books = [b for b in books if b.market == market]
+    reference = {name.lower() for name in settings.reference_bookmakers}
+    tradable = [b for b in books if b.bookmaker.lower() not in reference]
     outcomes = []
     best_odds: dict[str, float] = {}
     for outcome in sorted(set(model_probs) | {o for b in books for o in b.odds}):
         in_model = outcome in model_probs
         p = model_probs.get(outcome, 0.0)
-        quoted = {b.bookmaker: b.odds[outcome] for b in books if outcome in b.odds}
+        # Reference sources (e.g. prediction markets) inform the market probability only.
+        quoted = {b.bookmaker: b.odds[outcome] for b in tradable if outcome in b.odds}
         fair = [b.fair[outcome] for b in books if b.fair is not None and outcome in b.fair]
+        reference_fair = [b.fair[outcome] for b in books
+                          if b.bookmaker.lower() in reference and b.fair is not None and outcome in b.fair]
         if quoted and not in_model:
             bookmaker, best = max(quoted.items(), key=lambda kv: kv[1])
             best_odds[outcome] = best
@@ -85,6 +91,7 @@ def compare_market(
                 outcome=outcome,
                 p_model=p,
                 p_market=mean(fair) if fair else None,
+                p_reference=mean(reference_fair) if reference_fair else None,
                 best_odds=best,
                 best_bookmaker=bookmaker,
                 odds_by_bookmaker=quoted,
@@ -100,5 +107,5 @@ def compare_market(
         outcomes=outcomes,
         books=books,
         arbitrage_sum=arbitrage_sum(best_odds) if covered else None,
-        margins={b.bookmaker: b.margin for b in books},
+        margins={b.bookmaker: b.margin for b in tradable},
     )

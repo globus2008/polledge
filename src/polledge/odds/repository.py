@@ -7,6 +7,7 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from polledge.timeutil import utcnow
 from polledge.db import OddsQuoteRow
 from polledge.odds.base import OddsQuote
 
@@ -14,7 +15,7 @@ from polledge.odds.base import OddsQuote
 def store_quotes(session: Session, quotes: list[OddsQuote], source: str) -> tuple[int, int]:
     """Returns (inserted, updated)."""
     inserted = updated = 0
-    now = datetime.now()
+    now = utcnow()
     for q in quotes:
         row = session.scalars(
             select(OddsQuoteRow).where(

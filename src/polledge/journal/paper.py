@@ -9,6 +9,7 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from polledge.timeutil import utcnow
 from polledge.config import ElectionResult
 from polledge.db import ElectionResultRow, ModelSnapshotRow, PaperBetRow
 from polledge.model.markets import BINARY_OUTCOMES, parse_market
@@ -25,7 +26,7 @@ def record_signals(
     Returns the signals that were newly recorded (used for notifications).
     """
     created: list[OutcomeComparison] = []
-    now = datetime.now()
+    now = utcnow()
     for comp in comparisons:
         for o in comp.signals:
             exists = session.scalars(
@@ -68,7 +69,7 @@ def record_snapshot(
     market_probs: dict[str, dict[str, float]] | None = None,
     created_at: datetime | None = None,
 ) -> int:
-    created_at = created_at or datetime.now()
+    created_at = created_at or utcnow()
     count = 0
     for market, outcomes in probabilities.items():
         for outcome, p in outcomes.items():
@@ -111,10 +112,10 @@ def store_result(session: Session, election_id: str, result: ElectionResult) -> 
     row = session.get(ElectionResultRow, election_id)
     payload = result.model_dump()
     if row is None:
-        session.add(ElectionResultRow(election_id=election_id, payload=payload, entered_at=datetime.now()))
+        session.add(ElectionResultRow(election_id=election_id, payload=payload, entered_at=utcnow()))
     else:
         row.payload = payload
-        row.entered_at = datetime.now()
+        row.entered_at = utcnow()
     session.commit()
 
 
@@ -139,7 +140,7 @@ class SettlementReport:
 
 def settle(session: Session, election_id: str, result: ElectionResult) -> SettlementReport:
     store_result(session, election_id, result)
-    now = datetime.now()
+    now = utcnow()
     bets = session.scalars(select(PaperBetRow).where(PaperBetRow.election_id == election_id)).all()
     for bet in bets:
         if bet.status != "open":

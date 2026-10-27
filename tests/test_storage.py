@@ -3,6 +3,7 @@ from datetime import date, datetime, timedelta
 import pytest
 import yaml
 
+from polledge.timeutil import utcnow
 from polledge.cache import PageCache
 from polledge.config import Settings
 from polledge.db import PollRow, make_session_factory
@@ -27,7 +28,7 @@ def test_db_url(monkeypatch, tmp_path):
 def test_page_cache_roundtrip():
     cache = PageCache(make_session_factory(":memory:"), "ns")
     assert cache.get("u") is None
-    when = datetime.now() - timedelta(hours=2)
+    when = utcnow() - timedelta(hours=2)
     cache.put("u", "body", fetched_at=when)
     page = cache.get("u")
     assert page.body == "body" and 1.9 < page.age_hours() < 2.1

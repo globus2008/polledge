@@ -38,6 +38,7 @@ from polledge.i18n import _, decimal
 from polledge.logging_setup import setup_logging
 from polledge.model.simulate import SimulationResult
 from polledge.presentation import market_label, outcome_label
+from polledge.timeutil import to_local
 from polledge.odds.file_source import source_for_path
 from polledge.odds.repository import load_quotes, store_quotes
 from polledge.polls.repository import load_polls
@@ -524,7 +525,7 @@ def journal_cmd(election: Annotated[str, typer.Option("--election", "-e", help=_
     status = {"open": _("open"), "won": "[green]" + _("won") + "[/green]",
               "lost": "[red]" + _("lost") + "[/red]", "void": _("void")}
     for b in bets:
-        t.add_row(b.created_at.strftime(_("%Y-%m-%d %H:%M")), market_label(cfg, b.market), outcome_label(cfg, b.outcome),
+        t.add_row(to_local(b.created_at).strftime(_("%Y-%m-%d %H:%M")), market_label(cfg, b.market), outcome_label(cfg, b.outcome),
                   b.bookmaker, num(b.odds), pct(b.p_model), signed_pct(b.edge), money(b.stake),
                   status.get(b.status, b.status), money(b.profit) if b.profit is not None else DASH)
     console.print(t)

@@ -54,3 +54,16 @@ runoff:
 # Optional model parameter overrides for this election only, e.g.:
 # model:
 #   half_life_days: 21
+
+# Odds sources. Betano does not list this election yet; the hourly run searches its politics page
+# for a competition containing all keywords and starts downloading as soon as one appears.
+# Polymarket is a prediction market used as a market reference only (no signals or stakes).
+bookmakers:
+  betano:
+    discover: ["Francie", "prezident"]
+    markets:
+      "Vítěz": winner
+  polymarket:
+    pages: ["next-french-presidential-election"]
+    markets:
+      "next-french-presidential-election": winner

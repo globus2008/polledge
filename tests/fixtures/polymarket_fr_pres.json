@@ -1,0 +1,178 @@
+[
+ {
+  "id": "79987",
+  "slug": "next-french-presidential-election",
+  "title": "Next French Presidential Election",
+  "closed": false,
+  "markets": [
+   {
+    "id": "679018",
+    "question": "Will Marine Le Pen win the 2027 French presidential election?",
+    "groupItemTitle": "Marine Le Pen",
+    "outcomes": "[\"Yes\", \"No\"]",
+    "outcomePrices": "[\"0.4435\", \"0.5565\"]",
+    "active": true,
+    "closed": false,
+    "bestBid": 0.443,
+    "bestAsk": 0.444,
+    "lastTradePrice": 0.443
+   },
+   {
+    "id": "679021",
+    "question": "Will Édouard Philippe win the 2027 French presidential election?",
+    "groupItemTitle": "Édouard Philippe",
+    "outcomes": "[\"Yes\", \"No\"]",
+    "outcomePrices": "[\"0.175\", \"0.825\"]",
+    "active": true,
+    "closed": false,
+    "bestBid": 0.17,
+    "bestAsk": 0.18,
+    "lastTradePrice": 0.18
+   },
+   {
+    "id": "679022",
+    "question": "Will David Lisnard win the 2027 French presidential election?",
+    "groupItemTitle": "David Lisnard",
+    "outcomes": "[\"Yes\", \"No\"]",
+    "outcomePrices": "[\"0.1365\", \"0.8635\"]",
+    "active": true,
+    "closed": false,
+    "bestBid": 0.136,
+    "bestAsk": 0.137,
+    "lastTradePrice": 0.138
+   },
+   {
+    "id": "679030",
+    "question": "Will Jean-Luc Mélenchon win the 2027 French presidential election?",
+    "groupItemTitle": "Jean-Luc Mélenchon",
+    "outcomes": "[\"Yes\", \"No\"]",
+    "outcomePrices": "[\"0.115\", \"0.885\"]",
+    "active": true,
+    "closed": false,
+    "bestBid": 0.11,
+    "bestAsk": 0.12,
+    "lastTradePrice": 0.12
+   },
+   {
+    "id": "679029",
+    "question": "Will Raphaël Glucksmann win the 2027 French presidential election?",
+    "groupItemTitle": "Raphaël Glucksmann",
+    "outcomes": "[\"Yes\", \"No\"]",
+    "outcomePrices": "[\"0.0315\", \"0.9685\"]",
+    "active": true,
+    "closed": false,
+    "bestBid": 0.031,
+    "bestAsk": 0.032,
+    "lastTradePrice": 0.031
+   },
+   {
+    "id": "679028",
+    "question": "Will François Hollande win the 2027 French presidential election?",
+    "groupItemTitle": "François Hollande",
+    "outcomes": "[\"Yes\", \"No\"]",
+    "outcomePrices": "[\"0.0265\", \"0.9735\"]",
+    "active": true,
+    "closed": false,
+    "bestBid": 0.026,
+    "bestAsk": 0.027,
+    "lastTradePrice": 0.029
+   },
+   {
+    "id": "679019",
+    "question": "Will Jordan Bardella win the 2027 French presidential election?",
+    "groupItemTitle": "Jordan Bardella",
+    "outcomes": "[\"Yes\", \"No\"]",
+    "outcomePrices": "[\"0.012\", \"0.988\"]",
+    "active": true,
+    "closed": false,
+    "bestBid": 0.011,
+    "bestAsk": 0.013,
+    "lastTradePrice": 0.014
+   },
+   {
+    "id": "679027",
+    "question": "Will Bruno Retailleau win the 2027 French presidential election?",
+    "groupItemTitle": "Bruno Retailleau",
+    "outcomes": "[\"Yes\", \"No\"]",
+    "outcomePrices": "[\"0.0115\", \"0.9885\"]",
+    "active": true,
+    "closed": false,
+    "bestBid": 0.011,
+    "bestAsk": 0.012,
+    "lastTradePrice": 0.011
+   },
+   {
+    "id": "679020",
+    "question": "Will Éric Zemmour win the 2027 French presidential election?",
+    "groupItemTitle": "Éric Zemmour",
+    "outcomes": "[\"Yes\", \"No\"]",
+    "outcomePrices": "[\"0.0095\", \"0.9905\"]",
+    "active": true,
+    "closed": false,
+    "bestBid": 0.009,
+    "bestAsk": 0.01,
+    "lastTradePrice": 0.009
+   },
+   {
+    "id": "679026",
+    "question": "Will Gabriel Attal win the 2027 French presidential election?",
+    "groupItemTitle": "Gabriel Attal",
+    "outcomes": "[\"Yes\", \"No\"]",
+    "outcomePrices": "[\"0.0065\", \"0.9935\"]",
+    "active": true,
+    "closed": false,
+    "bestBid": 0.006,
+    "bestAsk": 0.007,
+    "lastTradePrice": 0.006
+   },
+   {
+    "id": "679034",
+    "question": "Will Dominique de Villepin win the 2027 French presidential election?",
+    "groupItemTitle": "Dominique de Villepin",
+    "outcomes": "[\"Yes\", \"No\"]",
+    "outcomePrices": "[\"0.0065\", \"0.9935\"]",
+    "active": true,
+    "closed": false,
+    "bestBid": 0.006,
+    "bestAsk": 0.007,
+    "lastTradePrice": 0.007
+   },
+   {
+    "id": "679051",
+    "question": "Will Sarah Knafo win the 2027 French presidential election?",
+    "groupItemTitle": "Sarah Knafo",
+    "outcomes": "[\"Yes\", \"No\"]",
+    "outcomePrices": "[\"0.0065\", \"0.9935\"]",
+    "active": true,
+    "closed": false,
+    "bestBid": 0.006,
+    "bestAsk": 0.007,
+    "lastTradePrice": 0.006
+   },
+   {
+    "id": "679060",
+    "question": "Will Christine Lagarde win the 2027 French presidential election?",
+    "groupItemTitle": "Christine Lagarde",
+    "outcomes": "[\"Yes\", \"No\"]",
+    "outcomePrices": "[\"0.0025\", \"0.9975\"]",
+    "active": true,
+    "closed": false,
+    "bestBid": 0.002,
+    "bestAsk": 0.003,
+    "lastTradePrice": 0.002
+   },
+   {
+    "id": "679023",
+    "question": "Will Xavier Bertrand win the 2027 French presidential election?",
+    "groupItemTitle": "Xavier Bertrand",
+    "outcomes": "[\"Yes\", \"No\"]",
+    "outcomePrices": "[\"0.0015\", \"0.9985\"]",
+    "active": true,
+    "closed": false,
+    "bestBid": 0.001,
+    "bestAsk": 0.002,
+    "lastTradePrice": 0.001
+   }
+  ]
+ }
+]

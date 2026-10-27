@@ -22,6 +22,7 @@ from polledge.odds.margin import latest_books
 from polledge.odds.repository import delete_quotes, load_quotes, quote_rows, store_quotes
 from polledge.polls.repository import load_polls
 from polledge.presentation import market_label, outcome_label
+from polledge.timeutil import to_local
 from polledge.web import charts
 from polledge.web.state import context, current_election, elections, model, money, reload_context
 
@@ -214,10 +215,11 @@ def signals_page() -> None:
 
     with ctx.session() as session:
         quotes = load_quotes(session, cfg.id)
+    _sources_status(cfg, quotes)
     if not quotes:
         if cfg.bookmakers:
-            st.info(_("There are no odds for this election yet. Enter them on the Odds page or fetch them "
-                      "from the bookmakers in the sidebar."))
+            st.info(_("There are no odds for this election yet. They are downloaded automatically every hour "
+                      "as soon as a configured source lists the election; you can also enter them on the Odds page."))
         else:
             st.info(_("There are no odds for this election yet. Enter them on the Odds page."))
         return
@@ -238,28 +240,39 @@ def signals_page() -> None:
                  threshold=f"{sig.edge_threshold:.0%}", kelly=sig.kelly_fraction, bankroll=money(sig.bankroll)))
     only = st.toggle(_("Show only rows with a signal"), value=False)
 
+    reference_names = ", ".join(sig.reference_bookmakers)
     for comp in comparisons:
+        has_reference = any(o.p_reference is not None for o in comp.outcomes)
         rows = []
-        for o in sorted(comp.outcomes, key=lambda o: -o.p_model):
-            if o.best_odds is None or (only and not o.is_signal):
+        ordered = sorted(comp.outcomes, key=lambda o: (not o.in_model, -o.p_model, -(o.p_reference or 0)))
+        for o in ordered:
+            if (o.best_odds is None and o.p_reference is None) or (only and not o.is_signal):
                 continue
-            rows.append({
+            row = {
                 _("Outcome"): outcome_label(cfg, o.outcome),
                 _("Model"): o.p_model if o.in_model else None,
                 _("Market (no margin)"): o.p_market,
+            }
+            if has_reference:
+                row[_("Reference ({sources})", sources=reference_names)] = o.p_reference
+            row.update({
                 _("Best odds"): o.best_odds,
                 _("Bookmaker"): o.best_bookmaker,
                 _("Edge"): o.edge,
                 _("Stake"): money(o.stake) if o.stake > 0 else "",
                 _("Signal"): "✅ " + _("SIGNAL") if o.is_signal else ("" if o.in_model else _("not in model")),
             })
+            rows.append(row)
         if not rows:
             continue
         st.subheader(market_label(cfg, comp.market))
         st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch", column_config={
             _("Model"): PCT, _("Market (no margin)"): PCT, _("Edge"): st.column_config.NumberColumn(format="percent"),
-            _("Best odds"): ODDS,
+            _("Reference ({sources})", sources=reference_names): PCT, _("Best odds"): ODDS,
         })
+        if has_reference and not comp.margins:
+            st.caption(_("Only reference prices so far - signals and stakes appear once a bookmaker you can bet "
+                         "with lists this market."))
         notes = [_("Margins: {margins}", margins=", ".join(f"{bm} {m:.1%}" for bm, m in comp.margins.items()))]
         if comp.arbitrage_sum is not None:
             if comp.is_arbitrage:
@@ -277,6 +290,31 @@ def signals_page() -> None:
                             market_fair_probs(comparisons))
         st.success(_("Saved {count} new virtual bets to the journal.", count=len(created)))
     analysis_only()
+
+
+def _sources_status(cfg, quotes: list[OddsQuote]) -> None:
+    """Which automatic sources are configured for the election and when they last delivered odds."""
+    if not cfg.bookmakers:
+        return
+    reference = {n.lower() for n in context().settings.signals.reference_bookmakers}
+    latest: dict[str, tuple[datetime, int]] = {}
+    for q in quotes:
+        when, count = latest.get(q.bookmaker.lower(), (q.timestamp, 0))
+        latest[q.bookmaker.lower()] = (max(when, q.timestamp), count + 1)
+    rows = []
+    for name, book in cfg.bookmakers.items():
+        when, count = latest.get(name.lower(), (None, 0))
+        if count:
+            state = _("{count} odds, latest {time}", count=count, time=to_local(when).strftime(_("%Y-%m-%d %H:%M")))
+        elif book.discover and not book.pages:
+            state = _("does not list this election yet (searching for: {keywords})", keywords=", ".join(book.discover))
+        else:
+            state = _("no odds downloaded yet")
+        rows.append({_("Source"): name.capitalize(),
+                     _("Type"): _("market reference") if name.lower() in reference else _("bookmaker"),
+                     _("Status"): state})
+    with st.expander(_("Automatic odds sources (downloaded every hour)"), expanded=not quotes):
+        st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
 
 
 # ---------------------------------------------------------------- odds
@@ -379,12 +417,12 @@ def _stored_odds(ctx, cfg) -> None:
         return
     st.subheader(_("Bookmaker margins (latest odds)"))
     books = [{_("Bookmaker"): b.bookmaker, _("Market"): market_label(cfg, b.market), _("Outcomes"): len(b.odds),
-              _("Margin"): b.margin, _("Time"): b.timestamp, _("Complete"): b.complete}
+              _("Margin"): b.margin, _("Time"): to_local(b.timestamp), _("Complete"): b.complete}
              for b in latest_books(quotes)]
     st.dataframe(pd.DataFrame(books), hide_index=True, width="stretch", column_config={_("Margin"): PCT})
 
     st.subheader(_("All stored odds"))
-    df = pd.DataFrame([{"id": r.id, _("Time"): r.timestamp, _("Bookmaker"): r.bookmaker,
+    df = pd.DataFrame([{"id": r.id, _("Time"): to_local(r.timestamp), _("Bookmaker"): r.bookmaker,
                         _("Market"): market_label(cfg, r.market), _("Outcome"): outcome_label(cfg, r.outcome),
                         _("Odds"): r.odds, _("Source"): r.source} for r in rows])
     selection = st.dataframe(df, hide_index=True, width="stretch", on_select="rerun",
@@ -423,7 +461,7 @@ def journal_page() -> None:
         c4.metric("ROI", f"{profit / staked:.1%}" if staked else "–")
         status = {"open": _("open"), "won": _("won"), "lost": _("lost"), "void": _("void")}
         st.dataframe(pd.DataFrame([{
-            _("Time"): b.created_at, _("Market"): market_label(cfg, b.market), _("Outcome"): outcome_label(cfg, b.outcome),
+            _("Time"): to_local(b.created_at), _("Market"): market_label(cfg, b.market), _("Outcome"): outcome_label(cfg, b.outcome),
             _("Bookmaker"): b.bookmaker, _("Odds"): b.odds, _("Model"): b.p_model, _("Edge"): b.edge,
             _("Stake"): money(b.stake), _("Status"): status.get(b.status, b.status),
             _("Profit"): money(b.profit) if b.profit is not None else "",

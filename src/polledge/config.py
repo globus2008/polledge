@@ -50,6 +50,8 @@ class SignalSettings(BaseModel):
     bankroll: float = 10_000.0
     max_stake_pct: float | None = 0.05
     currency: str = "CZK"
+    # Sources used only as a market reference (fair probability), never for best odds, signals or stakes.
+    reference_bookmakers: list[str] = ["Polymarket"]
 
 
 class ScrapingSettings(BaseModel):
@@ -165,7 +167,10 @@ class RoundConfig(BaseModel):
 class BookmakerConfig(BaseModel):
     """Where a bookmaker lists this election and how its names map to ours."""
 
-    pages: list[str]
+    pages: list[str] = []  # fixed pages (Betano: event/league URLs, Polymarket: event slugs)
+    # Find pages automatically: every keyword must appear in the bookmaker's competition name
+    # (case/accent-insensitive), e.g. ["Francie", "prezident"]. Used in addition to `pages`.
+    discover: list[str] = []
     # Bookmaker market name -> our market id, e.g. {"Vítěz": "winner"}. Unlisted markets are ignored.
     markets: dict[str, str]
     # Extra selection-name aliases, e.g. {"Pavel P.": PAVEL}; candidate names/aliases are used automatically.

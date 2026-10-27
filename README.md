@@ -217,16 +217,23 @@ Stav podpory kanceláří (říjen 2026):
 
 | Kancelář | Stav |
 |---|---|
-| **Betano** | podporováno: nabídka je jako JSON přímo ve veřejné stránce |
+| **Betano** | podporováno: nabídka je jako JSON přímo ve veřejné stránce; umí i samo hledat nové trhy |
+| **Polymarket** | podporováno jako **reference trhu**: veřejné API predikčního trhu |
 | Tipsport | nepodporováno: web vrací automatickým klientům HTTP 403 |
 | Chance | nepodporováno: web vrací automatickým klientům HTTP 403 |
 | Fortuna | nepodporováno: nabídku načítá JavaScript z interního API |
 
-U nepodporovaných kanceláří zadávej kurzy ručně přes `import-odds`. Obojí se v porovnání kombinuje a vybírá se nejlepší kurz.
+U nepodporovaných kanceláří zadávej kurzy ručně přes `import-odds` nebo formulářem na stránce Kurzy. Obojí se v porovnání kombinuje a vybírá se nejlepší kurz.
+
+**Automatické hledání (Betano).** Místo pevné adresy stránky lze u kanceláře uvést klíčová slova, třeba `discover: ["Francie", "prezident"]`. Hodinové hlídání pak projde stránku Politika a stahuje kurzy ze všech soutěží, jejichž název obsahuje všechna slova (velikost písmen ani diakritika nehrají roli). Dokud kancelář trh nevypíše, nic se nestahuje a web u zdroje ukazuje „zatím nevypisuje“.
+
+**Reference trhu (Polymarket).** Ceny z predikčního trhu bez marže jsou dobrým odhadem „názoru trhu“. Zobrazují se ve sloupci *Reference* a počítají se do pravděpodobnosti trhu. Nikdy ale nejsou nejlepším kurzem a nevznikají z nich signály, vklady ani arbitráže, protože na Polymarketu se z ČR nesází legálně. Které zdroje jsou referenční, určuje `signals.reference_bookmakers` v `settings.yaml`. U Polymarketu se v `pages` uvádí *slug* události (část adresy za `polymarket.com/event/`) a v `markets` jeho převod na typ trhu.
+
+**Časy** se v databázi ukládají v UTC, protože ji sdílejí počítače v různých časových pásmech (domácí PC, GitHub Actions, Streamlit Cloud). Ve webu, ve výpisech i při ručním zadání kurzů se pracuje v pražském čase.
 
 Nový scraper je třída `OddsSource` zaregistrovaná v `src/polledge/odds/scrapers/__init__.py` (viz Betano v `betano.py`). Ke stahování používá `PoliteFetcher` a k převodu názvů na naše ID `NameMapper`.
 
-**Volby s živými kurzy:** FR 2027 zatím žádná podporovaná kancelář nevypisuje. Betano i Fortuna nabízejí **české prezidentské volby 2028** (`cz_pres_2028`), které jsou proto nakonfigurované se stahováním z Betana. Pozor, průzkumy k nim jsou slabé:
+**Volby s živými kurzy:** **FR 2027** má automaticky ceny z Polymarketu (reference) a Betano se pro ni hlídá podle klíčových slov. Signály se objeví, jakmile ji Betano vypíše nebo zadáte kurzy české kanceláře ručně. Betano i Fortuna nabízejí **české prezidentské volby 2028** (`cz_pres_2028`), které se stahují z Betana. Pozor, průzkumy k nim jsou slabé:
 
 - je jich jen pár,
 - STEM/MARK se ptá „koho byste mohl volit“ s více odpověďmi a řádky dávají v součtu kolem 150 %; model je přepočítá na 100 %, takže jde jen o hrubý odhad relativní podpory,

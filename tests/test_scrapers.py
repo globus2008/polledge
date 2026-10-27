@@ -5,6 +5,7 @@ from pathlib import Path
 import httpx
 import pytest
 
+from polledge.timeutil import utcnow
 from polledge.cache import PageCache
 from polledge.config import BookmakerConfig, ScrapingSettings, load_election
 from polledge.db import make_session_factory
@@ -98,7 +99,7 @@ def test_cached_page_keeps_original_timestamp(tmp_path, election):
     source = BetanoSource(fetcher, election, election.bookmakers["betano"])
     first = source.fetch()
     # pretend the cached page was downloaded 10 minutes ago
-    fetcher.cache.put(EVENT_URL, html, fetched_at=datetime.now() - timedelta(minutes=10))
+    fetcher.cache.put(EVENT_URL, html, fetched_at=utcnow() - timedelta(minutes=10))
     second = source.fetch()
     assert second[0].timestamp < first[0].timestamp
 

@@ -9,6 +9,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session, sessionmaker
 
+from polledge.timeutil import utcnow
 from polledge.cache import PageCache
 from polledge.config import (
     ElectionConfig,
@@ -76,9 +77,9 @@ def load_calibration(session: Session) -> dict | None:
 def save_calibration(session: Session, payload: dict) -> None:
     row = session.get(AppSettingRow, CALIBRATION_KEY)
     if row is None:
-        session.add(AppSettingRow(key=CALIBRATION_KEY, value=payload, updated_at=datetime.now()))
+        session.add(AppSettingRow(key=CALIBRATION_KEY, value=payload, updated_at=utcnow()))
     else:
-        row.value, row.updated_at = payload, datetime.now()
+        row.value, row.updated_at = payload, utcnow()
     session.commit()
 
 
@@ -197,7 +198,7 @@ def model_markets(sim: SimulationResult, election: ElectionConfig, extra: list[s
 def build_comparisons(sim: SimulationResult, quotes: list[OddsQuote], settings: Settings) -> list[MarketComparison]:
     markets = sorted({q.market for q in quotes})
     model_probs = probabilities_for(sim, [parse_market(m) for m in markets])
-    books = latest_books(quotes, model_probs)
+    books = latest_books(quotes, model_probs, settings.signals.reference_bookmakers)
     return [compare_market(m, model_probs[m], books, settings.signals) for m in markets if m in model_probs]
 
 
@@ -208,4 +209,4 @@ def market_fair_probs(comparisons: list[MarketComparison]) -> dict[str, dict[str
 
 
 def params_payload(params: ModelParams, as_of: date) -> dict:
-    return {**params.model_dump(), "as_of": as_of.isoformat(), "computed_at": datetime.now().isoformat()}
+    return {**params.model_dump(), "as_of": as_of.isoformat(), "computed_at": utcnow().isoformat()}
