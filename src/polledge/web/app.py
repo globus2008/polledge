@@ -36,7 +36,7 @@ def main() -> None:
     pages = [
         st.Page(views.model_page, title=_("Model"), icon=":material/monitoring:", url_path="model", default=True),
         st.Page(views.signals_page, title=_("Signals"), icon=":material/bolt:", url_path="signals"),
-        st.Page(views.odds_page, title=_("Odds"), icon=":material/table_chart:", url_path="odds"),
+        st.Page(views.odds_page, title=_("Betting odds"), icon=":material/table_chart:", url_path="odds"),
         st.Page(views.journal_page, title=_("Journal"), icon=":material/menu_book:", url_path="journal"),
         st.Page(views.calibration_page, title=_("Calibration and backtest"), icon=":material/tune:",
                 url_path="calibration"),

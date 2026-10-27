@@ -45,7 +45,7 @@ def model_page() -> None:
     st.title(cfg.name)
 
     with st.sidebar:
-        if st.button(_("Update polls from Wikipedia"), use_container_width=True):
+        if st.button(_("Update polls from Wikipedia"), width="stretch"):
             from polledge.services import update_polls
 
             wiki = ctx.wiki_client()
@@ -94,7 +94,7 @@ def model_page() -> None:
     st.subheader(_("First-round estimate") if two_round else _("Result estimate"))
     config = {col: PCT for col in table.columns if col != _("Candidate / party")}
     config[_("Wins")] = st.column_config.ProgressColumn(_("Wins"), format="percent", min_value=0.0, max_value=1.0)
-    st.dataframe(table, hide_index=True, use_container_width=True, column_config=config)
+    st.dataframe(table, hide_index=True, width="stretch", column_config=config)
 
     if two_round and sim.finalists is not None:
         st.subheader(_("Most likely runoff pairs"))
@@ -105,7 +105,7 @@ def model_page() -> None:
              _("Runoff estimate source"): source.get(sim.runoff_sources.get(pair, ""), "")}
             for pair, p in sorted(pairs.items(), key=lambda kv: -kv[1])[:6]
         ]
-        st.dataframe(pd.DataFrame(pair_rows), hide_index=True, use_container_width=True,
+        st.dataframe(pd.DataFrame(pair_rows), hide_index=True, width="stretch",
                      column_config={_("Probability"): PCT})
 
     _poll_chart(cfg, sim)
@@ -118,7 +118,7 @@ def model_page() -> None:
                 [{_("Pollster"): p, **{cfg.candidate_name(c): eff.get(c, 0.0) for c in top}}
                  for p, eff in sorted(avg.house_effects.items())]
             )
-            st.dataframe(he, hide_index=True, use_container_width=True,
+            st.dataframe(he, hide_index=True, width="stretch",
                          column_config={cfg.candidate_name(c): st.column_config.NumberColumn(format="%+.1f") for c in top})
 
     params = model_params_for(ctx.settings, cfg)
@@ -145,10 +145,10 @@ def _poll_chart(cfg, sim) -> None:
     named = {cfg.candidate_name(c): col for c, col in colors.items()}
     st.subheader(_("Poll trend"))
     chart = charts.poll_trend(df, named, _("Fieldwork end"), _("Share (%)"), _("Candidate / party"))
-    st.altair_chart(chart, use_container_width=True, theme="streamlit")
+    st.altair_chart(chart, width="stretch", theme="streamlit")
     with st.expander(_("Polls as a table")):
         wide = df.pivot_table(index=["date", "pollster"], columns="label", values="share").reset_index()
-        st.dataframe(wide.sort_values("date", ascending=False), hide_index=True, use_container_width=True)
+        st.dataframe(wide.sort_values("date", ascending=False), hide_index=True, width="stretch")
 
 
 def _custom_market(cfg, sim) -> None:
@@ -163,7 +163,7 @@ def _custom_market(cfg, sim) -> None:
             return
         df = pd.DataFrame([{_("Outcome"): outcome_label(cfg, o), _("Probability"): p} for o, p in probs.items()])
         st.dataframe(df.sort_values(_("Probability"), ascending=False).head(12), hide_index=True,
-                     use_container_width=True, column_config={_("Probability"): PCT})
+                     width="stretch", column_config={_("Probability"): PCT})
 
 
 def _market_picker(cfg, candidates: list[str], key: str) -> MarketSpec | None:
@@ -198,7 +198,7 @@ def signals_page() -> None:
 
     if cfg.bookmakers:
         with st.sidebar:
-            if st.button(_("Fetch odds from bookmakers"), use_container_width=True):
+            if st.button(_("Fetch odds from bookmakers"), width="stretch"):
                 fetcher = ctx.fetcher()
                 try:
                     with st.spinner(_("Downloading odds...")), ctx.session() as session:
@@ -256,7 +256,7 @@ def signals_page() -> None:
         if not rows:
             continue
         st.subheader(market_label(cfg, comp.market))
-        st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True, column_config={
+        st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch", column_config={
             _("Model"): PCT, _("Market (no margin)"): PCT, _("Edge"): st.column_config.NumberColumn(format="percent"),
             _("Best odds"): ODDS,
         })
@@ -284,7 +284,7 @@ def signals_page() -> None:
 def odds_page() -> None:
     ctx = context()
     cfg = current_election()
-    st.title(_("Odds"))
+    st.title(_("Betting odds"))
     st.caption(cfg.name)
     tab_enter, tab_import, tab_stored = st.tabs([_("Enter odds"), _("Import file"), _("Stored odds")])
 
@@ -318,7 +318,7 @@ def _enter_odds(ctx, cfg) -> None:
         st.caption(_("Enter the pair as ID|ID, e.g. LE_PEN|PHILIPPE."))
         editor_df = pd.DataFrame({"outcome": [""], _("Outcome"): [""], _("Odds"): [None]})
     edited = st.data_editor(
-        editor_df, hide_index=True, use_container_width=True, key=f"editor_{spec.id}",
+        editor_df, hide_index=True, width="stretch", key=f"editor_{spec.id}",
         num_rows="dynamic" if spec.kind == "finalists" else "fixed",
         disabled=[_("Outcome")] if spec.kind != "finalists" else [],
         column_config={"outcome": None if spec.kind != "finalists" else st.column_config.TextColumn(_("Pair (ID|ID)")),
@@ -381,13 +381,13 @@ def _stored_odds(ctx, cfg) -> None:
     books = [{_("Bookmaker"): b.bookmaker, _("Market"): market_label(cfg, b.market), _("Outcomes"): len(b.odds),
               _("Margin"): b.margin, _("Time"): b.timestamp, _("Complete"): b.complete}
              for b in latest_books(quotes)]
-    st.dataframe(pd.DataFrame(books), hide_index=True, use_container_width=True, column_config={_("Margin"): PCT})
+    st.dataframe(pd.DataFrame(books), hide_index=True, width="stretch", column_config={_("Margin"): PCT})
 
     st.subheader(_("All stored odds"))
     df = pd.DataFrame([{"id": r.id, _("Time"): r.timestamp, _("Bookmaker"): r.bookmaker,
                         _("Market"): market_label(cfg, r.market), _("Outcome"): outcome_label(cfg, r.outcome),
                         _("Odds"): r.odds, _("Source"): r.source} for r in rows])
-    selection = st.dataframe(df, hide_index=True, use_container_width=True, on_select="rerun",
+    selection = st.dataframe(df, hide_index=True, width="stretch", on_select="rerun",
                              selection_mode="multi-row", column_config={"id": None, _("Odds"): ODDS}, key="odds_table")
     selected = [int(df.iloc[i]["id"]) for i in selection.selection.rows]
     if st.button(_("Delete selected odds ({count})", count=len(selected)), disabled=not selected):
@@ -418,7 +418,7 @@ def journal_page() -> None:
         profit = sum(b.profit or 0 for b in settled)
         c1, c2, c3, c4 = st.columns(4)
         c1.metric(_("Bets in total"), len(bets))
-        c2.metric(_("open"), sum(b.status == "open" for b in bets))
+        c2.metric(_("Open bets"), sum(b.status == "open" for b in bets))
         c3.metric(_("Profit / loss"), money(profit))
         c4.metric("ROI", f"{profit / staked:.1%}" if staked else "–")
         status = {"open": _("open"), "won": _("won"), "lost": _("lost"), "void": _("void")}
@@ -427,7 +427,7 @@ def journal_page() -> None:
             _("Bookmaker"): b.bookmaker, _("Odds"): b.odds, _("Model"): b.p_model, _("Edge"): b.edge,
             _("Stake"): money(b.stake), _("Status"): status.get(b.status, b.status),
             _("Profit"): money(b.profit) if b.profit is not None else "",
-        } for b in bets]), hide_index=True, use_container_width=True,
+        } for b in bets]), hide_index=True, width="stretch",
             column_config={_("Model"): PCT, _("Edge"): PCT, _("Odds"): ODDS})
 
     with st.expander(_("Enter the election result and settle the journal"), expanded=False):
@@ -442,7 +442,7 @@ def journal_page() -> None:
                          _("Runoff (%)"): st.column_config.NumberColumn(min_value=0.0, max_value=100.0)}
         if cfg.type != "two_round":
             column_config[_("Runoff (%)")] = None
-        edited = st.data_editor(df, hide_index=True, use_container_width=True, disabled=[_("Candidate / party")],
+        edited = st.data_editor(df, hide_index=True, width="stretch", disabled=[_("Candidate / party")],
                                 column_config=column_config, key="result_editor")
         if st.button(_("Settle"), type="primary"):
             first = {r["id"]: float(r[_("First round (%)")]) for _i, r in edited.iterrows()
@@ -518,7 +518,7 @@ def calibration_page() -> None:
             _("Days before"): s.horizon, _("Polls"): s.n_polls, _("MAE of average (pp)"): s.mae_pp,
             "CRPS (pp)": s.crps_pp, _("80% coverage"): s.coverage80, _("P(actual winner)"): s.p_actual_winner,
             _("Head-to-head error (pp)"): s.runoff_error_pp,
-        } for s in scores]), hide_index=True, use_container_width=True, column_config={
+        } for s in scores]), hide_index=True, width="stretch", column_config={
             _("80% coverage"): PCT, _("P(actual winner)"): PCT,
             _("MAE of average (pp)"): st.column_config.NumberColumn(format="%.2f"),
             "CRPS (pp)": st.column_config.NumberColumn(format="%.2f"),
@@ -568,7 +568,7 @@ def _show_calibration(ctx, stored) -> None:
         _("House effects (min. polls)"): _("off") if combo["house"] is None else combo["house"],
         _("σ systematic"): combo["sigma_sys_pp"], _("σ horizon / √day"): combo["sigma_horizon_pp_per_sqrt_day"],
         "CRPS": score,
-    } for combo, score in res.table[:8]]), hide_index=True, use_container_width=True)
+    } for combo, score in res.table[:8]]), hide_index=True, width="stretch")
     st.dataframe(pd.DataFrame([{_("Election"): e, _("CRPS tuned"): r["tuned"], _("CRPS default"): r["default"]}
                                for e, r in res.loeo.items()]), hide_index=True)
     st.write(_("Default parameters: CRPS {default} -> tuned: {tuned}", default=f"{res.default_score:.3f}",

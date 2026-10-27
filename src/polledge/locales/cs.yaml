@@ -324,3 +324,5 @@
 "`polledge calibrate-reset` returns to the values from settings.yaml.": "`polledge calibrate-reset` vrátí hodnoty ze settings.yaml."
 "calibrated": "nakalibrované"
 "row {n}": "řádek {n}"
+"Betting odds": "Kurzy"
+"Open bets": "Otevřené sázky"
