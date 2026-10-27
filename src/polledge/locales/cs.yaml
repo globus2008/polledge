@@ -224,7 +224,6 @@
 "Cannot read Betano offer data: {error}": "Data nabídky Betano nejdou přečíst: {error}"
 "No configured market ({markets}) found on the Betano pages for {id}. The market may have closed or been renamed.": "Na stránkách Betano pro {id} nebyl nalezen žádný nakonfigurovaný trh ({markets}). Trh mohl skončit nebo se přejmenovat."
 "robots.txt of {host} does not allow fetching {url}": "robots.txt serveru {host} nepovoluje stahovat {url}"
-"{host} refused access (HTTP {status}). The bookmaker blocks automated access; PollEdge does not bypass it - import the odds manually.": "{host} odmítl přístup (HTTP {status}). Kancelář blokuje automatické stahování; PollEdge ochranu neobchází – použij ruční import kurzů."
 "Page {url} does not exist (HTTP 404) - fix the address in the election config": "Stránka {url} neexistuje (HTTP 404) – uprav adresu v konfiguraci voleb"
 "Failed to download {url}: {error}": "Nepodařilo se stáhnout {url}: {error}"
 
@@ -337,3 +336,8 @@
 "market reference": "reference trhu"
 "no odds downloaded yet": "zatím žádné stažené kurzy"
 "{count} odds, latest {time}": "{count} kurzů, poslední {time}"
+"{host} refused access (HTTP {status}). The bookmaker blocks this connection - usually because it comes from a cloud server. PollEdge does not bypass it: download the odds from your home network (PollEdge.bat or the NAS container) or enter them manually.": "{host} odmítl přístup (HTTP {status}). Kancelář blokuje toto připojení – obvykle proto, že jde ze serveru v cloudu. PollEdge ochranu neobchází: stáhni kurzy z domácí sítě (PollEdge.bat nebo kontejner na NAS), nebo je zadej ručně."
+"downloaded from the home network (NAS)": "stahuje se z domácí sítě (NAS)"
+"downloaded from the home network (NAS) - no odds yet": "stahuje se z domácí sítě (NAS) – zatím žádné kurzy"
+"Repeat every N seconds and keep running (e.g. in a container)": "Opakovat každých N sekund a běžet trvale (např. v kontejneru)"
+"--every must be at least 60 seconds": "--every musí být alespoň 60 sekund"

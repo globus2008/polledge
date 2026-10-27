@@ -18,6 +18,8 @@ jobs:
     env:
       POLLEDGE_DATABASE_URL: ${{ secrets.POLLEDGE_DATABASE_URL }}
       POLLEDGE_SMTP_PASSWORD: ${{ secrets.POLLEDGE_SMTP_PASSWORD }}
+      # Betano blocks cloud servers (HTTP 403); it is fetched from the home network (NAS) instead.
+      POLLEDGE_SKIP_SOURCES: betano
     steps:
       - name: Database secret missing
         if: env.POLLEDGE_DATABASE_URL == ''

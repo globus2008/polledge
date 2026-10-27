@@ -1,0 +1,13 @@
+# Synology Container Manager -> Project -> Create, paste this file.
+# Put the database URL into the "Environment" of the project (or a .env file next to this file):
+#   POLLEDGE_DATABASE_URL=postgresql://...   (the same value as in Streamlit Cloud secrets)
+services:
+  polledge-watch:
+    image: ghcr.io/globus2008/polledge:latest
+    container_name: polledge-watch
+    restart: unless-stopped
+    environment:
+      POLLEDGE_DATABASE_URL: ${POLLEDGE_DATABASE_URL:?set POLLEDGE_DATABASE_URL}
+      TZ: Europe/Prague
+    # Every hour: polls (cached) + Betano + Polymarket -> model -> new signals into the journal.
+    command: ["polledge", "watch", "--every", "3600"]

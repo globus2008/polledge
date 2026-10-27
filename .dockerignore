@@ -1,0 +1,11 @@
+.git
+.github
+.venv
+.streamlit
+.devcontainer
+.pytest_cache
+**/__pycache__
+data
+logs
+tests
+*.egg-info

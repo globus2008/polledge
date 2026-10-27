@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -121,6 +122,12 @@ class FetchReport:
     error: str | None = None
 
 
+def skipped_sources() -> set[str]:
+    """Sources not to contact from this machine, e.g. POLLEDGE_SKIP_SOURCES=betano on cloud servers
+    that the bookmaker blocks (they are fetched from a home network instead)."""
+    return {s.strip().lower() for s in os.environ.get("POLLEDGE_SKIP_SOURCES", "").split(",") if s.strip()}
+
+
 def fetch_odds(
     session: Session,
     fetcher,
@@ -133,8 +140,12 @@ def fetch_odds(
     from polledge.odds.scrapers import make_source
 
     reports = []
+    skipped = skipped_sources()
     for name, book in election.bookmakers.items():
         if bookmakers and name.lower() not in {b.lower() for b in bookmakers}:
+            continue
+        if name.lower() in skipped:
+            log.info("Source %s skipped on this machine (POLLEDGE_SKIP_SOURCES)", name)
             continue
         report = FetchReport(name)
         try:

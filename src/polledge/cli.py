@@ -6,6 +6,7 @@ import functools
 import logging
 import os
 import sys
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -38,7 +39,7 @@ from polledge.i18n import _, decimal
 from polledge.logging_setup import setup_logging
 from polledge.model.simulate import SimulationResult
 from polledge.presentation import market_label, outcome_label
-from polledge.timeutil import to_local
+from polledge.timeutil import to_local, utcnow
 from polledge.odds.file_source import source_for_path
 from polledge.odds.repository import load_quotes, store_quotes
 from polledge.polls.repository import load_polls
@@ -378,7 +379,25 @@ def fetch_odds_cmd(
 def watch_cmd(
     election: Annotated[Optional[list[str]], typer.Option("--election", "-e", help=_("Election id (default: all with bookmakers)"))] = None,
     no_polls: Annotated[bool, typer.Option("--no-polls", help=_("Do not download polls, only odds"))] = False,
+    every: Annotated[Optional[int], typer.Option("--every", help=_("Repeat every N seconds and keep running (e.g. in a container)"))] = None,
 ) -> None:
+    if every is None:
+        _watch_once(election, no_polls)
+        return
+    if every < 60:
+        raise PollEdgeError(_("--every must be at least 60 seconds"))
+    while True:
+        started = time.monotonic()
+        console.rule(to_local(utcnow()).strftime(_("%Y-%m-%d %H:%M")))
+        try:
+            _watch_once(election, no_polls)
+        except Exception as exc:  # keep the service alive; the next run may succeed
+            log.exception("Watch run failed")
+            print_error(exc)
+        time.sleep(max(60.0, every - (time.monotonic() - started)))
+
+
+def _watch_once(election: list[str] | None, no_polls: bool) -> None:
     from polledge.journal.paper import record_signals, record_snapshot
     from polledge.notify.base import Signal
     from polledge.notify.channels import build_notifiers

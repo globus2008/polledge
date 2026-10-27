@@ -294,6 +294,8 @@ def signals_page() -> None:
 
 def _sources_status(cfg, quotes: list[OddsQuote]) -> None:
     """Which automatic sources are configured for the election and when they last delivered odds."""
+    from polledge.services import skipped_sources
+
     if not cfg.bookmakers:
         return
     reference = {n.lower() for n in context().settings.signals.reference_bookmakers}
@@ -304,8 +306,13 @@ def _sources_status(cfg, quotes: list[OddsQuote]) -> None:
     rows = []
     for name, book in cfg.bookmakers.items():
         when, count = latest.get(name.lower(), (None, 0))
+        home_only = name.lower() in skipped_sources()
         if count:
             state = _("{count} odds, latest {time}", count=count, time=to_local(when).strftime(_("%Y-%m-%d %H:%M")))
+            if home_only:
+                state += " · " + _("downloaded from the home network (NAS)")
+        elif home_only:
+            state = _("downloaded from the home network (NAS) - no odds yet")
         elif book.discover and not book.pages:
             state = _("does not list this election yet (searching for: {keywords})", keywords=", ".join(book.discover))
         else:

@@ -101,8 +101,9 @@ class PoliteFetcher:
                 self._last_request[host] = time.monotonic()
                 if resp.status_code in (401, 403):
                     raise ScrapeError(_(
-                        "{host} refused access (HTTP {status}). The bookmaker blocks automated access; "
-                        "PollEdge does not bypass it - import the odds manually.",
+                        "{host} refused access (HTTP {status}). The bookmaker blocks this connection - usually "
+                        "because it comes from a cloud server. PollEdge does not bypass it: download the odds "
+                        "from your home network (PollEdge.bat or the NAS container) or enter them manually.",
                         host=host, status=resp.status_code,
                     ))
                 if resp.status_code == 404:
