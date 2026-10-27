@@ -1,56 +1,56 @@
-# Globální nastavení PollEdge. Cesty jsou relativní ke kořeni projektu.
-language: cs                # jazyk výstupů: cs | en (nápovědu --help řídí proměnná POLLEDGE_LANG)
+# Global PollEdge settings. Paths are relative to the project root.
+language: cs                # output language: cs | en (--help follows the POLLEDGE_LANG env variable)
 database: data/polledge.db
 cache_dir: data/cache
 log_dir: logs
 elections_dir: config/elections
-calibrated_file: config/calibrated.yaml   # vytvoří příkaz `polledge calibrate`; má přednost před "model" níže
+calibrated_file: config/calibrated.yaml   # written by `polledge calibrate`; overrides "model" below
 
 wikipedia:
   api_url: "https://en.wikipedia.org/w/api.php"
-  # Wikipedie vyžaduje identifikovatelný User-Agent; doplň kontakt (web nebo e-mail).
-  user_agent: "PollEdge/0.1 (personal election-poll research; contact: https://github.com/globus2008/polledgeCHANGE-ME"
-  cache_ttl_hours: 6        # stažená stránka se znovu nestahuje dřív než po této době
+  # Wikipedia requires an identifiable User-Agent; add a contact (website or e-mail).
+  user_agent: "PollEdge/0.1 (personal election-poll research; contact: https://github.com/globus2008)"
+  cache_ttl_hours: 6        # a downloaded page is not fetched again before this time
   timeout_seconds: 20
   max_retries: 3
 
 model:
-  half_life_days: 14        # poločas váhy průzkumu podle stáří
-  max_poll_age_days: 180    # starší průzkumy se ignorují
+  half_life_days: 14        # half-life of the poll weight by age
+  max_poll_age_days: 180    # older polls are ignored
   house_effects: true
-  house_min_polls: 3        # minimum průzkumů agentury pro korekci house effectu
-  house_shrinkage: 0        # m v k/(k+m); 0 = bez shrinkage
-  sigma_sys_pp: 2.5         # systematická chyba průzkumů na stranu (p.b.)
-  sigma_horizon_pp_per_sqrt_day: 0.0   # přidaná nejistota b*sqrt(dní do voleb)
-  sigma_runoff_pp: 3.0      # chyba head-to-head průzkumů 2. kola
-  sigma_runoff_fallback_pp: 6.0  # když pro dvojici chybí H2H průzkumy
-  small_party_ref_pct: 10   # pod touto hranicí se systematická chyba zmenšuje ~ sqrt(podíl/10 %)
+  house_min_polls: 3        # minimum polls of a pollster for a house-effect correction
+  house_shrinkage: 0        # m in k/(k+m); 0 = no shrinkage
+  sigma_sys_pp: 2.5         # systematic poll error per party (pp)
+  sigma_horizon_pp_per_sqrt_day: 0.0   # extra uncertainty b*sqrt(days to election)
+  sigma_runoff_pp: 3.0      # error of runoff head-to-head polls
+  sigma_runoff_fallback_pp: 6.0  # when a pair has no head-to-head polls
+  small_party_ref_pct: 10   # below this share the systematic error shrinks ~ sqrt(share/10 %)
   n_simulations: 10000
-  seed: null                # číslo = reprodukovatelné výsledky
+  seed: null                # a number = reproducible results
   min_share_pct: 0.1
 
-scraping:                   # stahování kurzů z veřejných stránek kanceláří (fetch-odds, watch)
+scraping:                   # downloading odds from public bookmaker pages (fetch-odds, watch)
   user_agent: "Mozilla/5.0 (compatible; PollEdge/0.2; personal odds research)"
-  cache_ttl_minutes: 30     # stránka se znovu nestahuje dřív než po této době
-  min_delay_seconds: 5      # rozestup dotazů na jeden server (delší Crawl-delay z robots.txt má přednost)
+  cache_ttl_minutes: 30     # a page is not fetched again before this time
+  min_delay_seconds: 5      # delay between requests to one host (a longer robots.txt Crawl-delay wins)
   timeout_seconds: 20
   max_retries: 2
   respect_robots_txt: true
 
-notify:                     # kam posílat nové signály z příkazu `watch`
+notify:                     # where `watch` sends new signals
   channels: [console]       # console, email
   email:
-    smtp_host: ""           # např. smtp.seznam.cz
+    smtp_host: ""           # e.g. smtp.seznam.cz
     smtp_port: 587
     use_tls: true
     username: ""
-    password_env: POLLEDGE_SMTP_PASSWORD   # heslo se čte z proměnné prostředí, nikdy ze souboru
+    password_env: POLLEDGE_SMTP_PASSWORD   # the password is read from this env variable, never from a file
     sender: ""
     recipients: []
 
 signals:
-  edge_threshold: 0.05      # signál při edge > 5 %
+  edge_threshold: 0.05      # signal when edge > 5 %
   kelly_fraction: 0.25      # 1/4 Kelly
-  bankroll: 10000           # virtuální bankroll
-  max_stake_pct: 0.05       # strop vkladu jako podíl bankrollu (null = bez stropu)
-  currency: "Kč"            # jen popisek měny ve výpisech
+  bankroll: 10000           # virtual bankroll
+  max_stake_pct: 0.05       # stake cap as a share of the bankroll (null = no cap)
+  currency: "Kč"            # currency label in the output only

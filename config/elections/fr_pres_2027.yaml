@@ -1,4 +1,4 @@
-# Francouzské prezidentské volby 2027 (1. kolo 18. 4. 2027, 2. kolo o dva týdny později)
+# French presidential election 2027 (first round 18 April 2027, runoff two weeks later)
 id: fr_pres_2027
 name: "Francie – prezidentské volby 2027"
 type: two_round
@@ -6,9 +6,9 @@ election_date: 2027-04-18
 wiki_page: "Opinion polling for the 2027 French presidential election"
 default_sample_size: 1000
 
-# Kandidáti: ID -> jméno a aliasy, jak se objevují v hlavičkách tabulek.
-# Příjmení (jméno bez prvního slova) se přidává jako alias automaticky.
-# Kandidáti, kteří tu nejsou, se sečtou do "Ostatní".
+# Candidates: id -> name and aliases as they appear in table headers.
+# The surname (name without the first word) is added as an alias automatically.
+# Candidates not listed here are summed into "Others".
 candidates:
   LE_PEN: {name: "Marine Le Pen"}
   BARDELLA: {name: "Jordan Bardella"}
@@ -32,16 +32,16 @@ candidates:
 
 first_round:
   tables:
-    # Měsíční tabulky v sekci "First round"; scénářové průzkumy (re-run 2022 apod.) vynecháme.
+    # Monthly tables in the "First round" section; scenario polls (2022 re-run etc.) are skipped.
     - heading: ["First round"]
       exclude_heading: ["Scenario polling"]
   columns:
     pollster: "Polling firm"
     fieldwork: "Fieldwork date"
     sample_size: "Sample size"
-  # Průzkumy obsahují více hypotetických sestav kandidátů na řádek.
-  # Bereme jen řádky, kde kandidují všichni z "require" a nikdo z "exclude".
-  # Základní scénář: Philippe jako jediný kandidát středu (bez Attala).
+  # Polls contain several hypothetical candidate line-ups, one per row.
+  # Only rows where everyone in "require" runs and nobody in "exclude" runs are used.
+  # Base scenario: Philippe as the only centrist candidate (without Attal).
   scenario:
     require: [LE_PEN, PHILIPPE, MELENCHON, RETAILLEAU, GLUCKSMANN]
     exclude: [ATTAL, BARDELLA, HOLLANDE, FAURE, RUFFIN, VILLEPIN, LISNARD, BOUAMRANE]
@@ -51,6 +51,6 @@ runoff:
     - heading: ["Second round"]
       exclude_heading: ["Declined to be candidates", "Scenario polling"]
 
-# Volitelné přepsání parametrů modelu jen pro tyto volby, např.:
+# Optional model parameter overrides for this election only, e.g.:
 # model:
 #   half_life_days: 21

@@ -1,12 +1,13 @@
-# České prezidentské volby 2028
-# Datum 1. kola je odhad (ústava: nejpozději v lednu 2028; Betano uvádí 28. 1. 2028, což odpovídá 2. kolu).
+# Czech presidential election 2028
+# The first-round date is an estimate (constitution: January 2028 at the latest; Betano lists 28 Jan 2028,
+# which matches the runoff).
 id: cz_pres_2028
 name: "Česko – prezidentské volby 2028"
 type: two_round
 election_date: 2028-01-14
-# Samostatná stránka "Opinion polling for ..." zatím neexistuje, průzkumy jsou v hlavním článku.
+# A separate "Opinion polling for ..." page does not exist yet; the polls are in the main article.
 wiki_page: "2028 Czech presidential election"
-default_sample_size: 1000   # tabulky velikost vzorku neuvádějí
+default_sample_size: 1000   # the tables do not give sample sizes
 
 candidates:
   PAVEL: {name: "Petr Pavel"}
@@ -38,8 +39,8 @@ first_round:
     pollster: "Agency"
     fieldwork: "Date"
     sample_size: null
-  # POZOR: průzkumy STEM/MARK jsou "koho byste mohl volit" (víc odpovědí, součet ~150 %).
-  # Model řádky přepočte na 100 %, takže jde jen o hrubý odhad relativní podpory.
+  # NOTE: STEM/MARK polls ask "who could you vote for" (several answers, rows sum to ~150 %).
+  # The model rescales rows to 100 %, so this is only a rough estimate of relative support.
   row_total: [85, 200]
   scenario:
     require: [PAVEL, BABIS, HAVLICEK, EBEN]
@@ -52,12 +53,12 @@ runoff:
     fieldwork: "Date"
     sample_size: null
 
-# Málo průzkumů -> delší poločas, aby průměr nestál na jediném čísle.
+# Few polls -> longer half-life so the average does not rest on a single number.
 model:
   half_life_days: 30
   max_poll_age_days: 540
 
-# Kde kancelář tyto volby vypisuje (veřejné stránky nabídky) a jak se jmenují trhy.
+# Where the bookmaker lists this election (public offer pages) and what its markets are called.
 bookmakers:
   betano:
     pages:
