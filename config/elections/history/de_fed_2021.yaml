@@ -1,0 +1,31 @@
+# Historické volby pro kalibraci: Německo, spolkové volby 2021 (stranické podíly)
+id: de_fed_2021
+name: "Německo – spolkové volby 2021"
+type: single_round
+election_date: 2021-09-26
+wiki_page: "Opinion polling for the 2021 German federal election"
+default_sample_size: 1500
+
+candidates:
+  UNION: {name: "CDU/CSU", aliases: ["Union"]}
+  SPD: {name: "SPD"}
+  GRUENE: {name: "Grüne"}
+  FDP: {name: "FDP"}
+  AFD: {name: "AfD"}
+  LINKE: {name: "Linke"}
+  FW: {name: "Freie Wähler", aliases: ["FW"]}
+
+first_round:
+  tables:
+    - heading: ["Poll results"]
+      exclude_heading: ["CDU and CSU", "Scenario polls", "By state"]
+
+result:
+  first_round:
+    SPD: 25.7
+    UNION: 24.1
+    GRUENE: 14.8
+    FDP: 11.5
+    AFD: 10.3
+    LINKE: 4.9
+    FW: 2.4

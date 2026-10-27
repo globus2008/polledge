@@ -1,0 +1,33 @@
+# Historické volby pro kalibraci: Německo, spolkové volby 2025 (stranické podíly)
+id: de_fed_2025
+name: "Německo – spolkové volby 2025"
+type: single_round
+election_date: 2025-02-23
+wiki_page: "Opinion polling for the 2025 German federal election"
+default_sample_size: 1500
+
+candidates:
+  UNION: {name: "CDU/CSU", aliases: ["Union"]}
+  AFD: {name: "AfD"}
+  SPD: {name: "SPD"}
+  GRUENE: {name: "Grüne"}
+  LINKE: {name: "Linke"}
+  BSW: {name: "BSW"}
+  FDP: {name: "FDP"}
+  FW: {name: "Freie Wähler", aliases: ["FW"]}
+
+first_round:
+  tables:
+    - heading: ["Poll results"]
+      exclude_heading: ["CDU and CSU", "Scenario polls", "By state"]
+
+result:
+  first_round:
+    UNION: 28.5
+    AFD: 20.8
+    SPD: 16.4
+    GRUENE: 11.6
+    LINKE: 8.8
+    BSW: 4.98
+    FDP: 4.3
+    FW: 1.5

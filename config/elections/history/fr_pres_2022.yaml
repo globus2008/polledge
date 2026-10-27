@@ -1,0 +1,52 @@
+# Historické volby pro kalibraci: Francie, prezidentské volby 2022
+id: fr_pres_2022
+name: "Francie – prezidentské volby 2022"
+type: two_round
+election_date: 2022-04-10
+wiki_page: "Opinion polling for the 2022 French presidential election"
+default_sample_size: 1000
+
+candidates:
+  MACRON: {name: "Emmanuel Macron"}
+  LE_PEN: {name: "Marine Le Pen"}
+  MELENCHON: {name: "Jean-Luc Mélenchon"}
+  ZEMMOUR: {name: "Éric Zemmour"}
+  PECRESSE: {name: "Valérie Pécresse"}
+  JADOT: {name: "Yannick Jadot"}
+  LASSALLE: {name: "Jean Lassalle"}
+  ROUSSEL: {name: "Fabien Roussel"}
+  DUPONT_AIGNAN: {name: "Nicolas Dupont-Aignan"}
+  HIDALGO: {name: "Anne Hidalgo"}
+  POUTOU: {name: "Philippe Poutou"}
+  ARTHAUD: {name: "Nathalie Arthaud"}
+  BERTRAND: {name: "Xavier Bertrand"}
+
+first_round:
+  tables:
+    - heading: ["First round"]
+  scenario:
+    require: [MACRON, LE_PEN, MELENCHON, ZEMMOUR, PECRESSE]
+    exclude: [BERTRAND]
+
+runoff:
+  tables:
+    - heading: ["Second round"]
+      exclude_heading: ["withdrawn candidates"]
+
+result:
+  first_round:
+    MACRON: 27.85
+    LE_PEN: 23.15
+    MELENCHON: 21.95
+    ZEMMOUR: 7.07
+    PECRESSE: 4.78
+    JADOT: 4.63
+    LASSALLE: 3.13
+    ROUSSEL: 2.28
+    DUPONT_AIGNAN: 2.06
+    HIDALGO: 1.75
+    POUTOU: 0.77
+    ARTHAUD: 0.56
+  runoff:
+    MACRON: 58.55
+    LE_PEN: 41.45

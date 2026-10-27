@@ -1,0 +1,11 @@
+info: 'Vygenerováno příkazem `polledge calibrate` z voleb: de_fed_2021, de_fed_2025,
+  fr_pres_2017, fr_pres_2022'
+score_crps_pp: 1.3214
+baseline_crps_pp: 1.5686
+model:
+  half_life_days: 3
+  house_effects: true
+  house_min_polls: 3
+  sigma_sys_pp: 1.5
+  sigma_horizon_pp_per_sqrt_day: 0.6
+  sigma_runoff_pp: 3.62

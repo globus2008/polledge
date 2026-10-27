@@ -1,0 +1,54 @@
+# Historické volby pro kalibraci: Francie, prezidentské volby 2017
+id: fr_pres_2017
+name: "Francie – prezidentské volby 2017"
+type: two_round
+election_date: 2017-04-23
+wiki_page: "Opinion polling for the 2017 French presidential election"
+default_sample_size: 1000
+
+candidates:
+  MACRON: {name: "Emmanuel Macron"}
+  LE_PEN: {name: "Marine Le Pen"}
+  FILLON: {name: "François Fillon"}
+  MELENCHON: {name: "Jean-Luc Mélenchon"}
+  HAMON: {name: "Benoît Hamon"}
+  DUPONT_AIGNAN: {name: "Nicolas Dupont-Aignan"}
+  LASSALLE: {name: "Jean Lassalle", aliases: ["Lassalle Résistons!"]}
+  POUTOU: {name: "Philippe Poutou"}
+  ASSELINEAU: {name: "François Asselineau"}
+  ARTHAUD: {name: "Nathalie Arthaud"}
+  CHEMINADE: {name: "Jacques Cheminade"}
+  BAYROU: {name: "François Bayrou"}
+  JUPPE: {name: "Alain Juppé"}
+  VALLS: {name: "Manuel Valls"}
+  HOLLANDE: {name: "François Hollande"}
+  JADOT: {name: "Yannick Jadot"}
+
+first_round:
+  tables:
+    - heading: ["First round"]
+  scenario:
+    require: [MACRON, LE_PEN, FILLON, MELENCHON, HAMON]
+    exclude: [BAYROU, JUPPE, VALLS, HOLLANDE, JADOT]
+
+runoff:
+  tables:
+    - heading: ["Second round"]
+      exclude_heading: ["By first round vote"]
+
+result:
+  first_round:
+    MACRON: 24.01
+    LE_PEN: 21.30
+    FILLON: 20.01
+    MELENCHON: 19.58
+    HAMON: 6.36
+    DUPONT_AIGNAN: 4.70
+    LASSALLE: 1.21
+    POUTOU: 1.09
+    ASSELINEAU: 0.92
+    ARTHAUD: 0.64
+    CHEMINADE: 0.18
+  runoff:
+    MACRON: 66.10
+    LE_PEN: 33.90
