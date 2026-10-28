@@ -509,7 +509,10 @@ def odds_page() -> None:
 
 
 def match_candidate(cfg, name: str) -> str | None:
-    """Candidate id for a pasted selection name: exact alias, or all words of a candidate name in any order."""
+    """Candidate id for a pasted selection name: exact alias, all words of a candidate name in any order,
+    or a near-identical long alias ("Demokrati většina ..." vs "Demokraté většina ...")."""
+    from difflib import SequenceMatcher
+
     from polledge.polls.cleaning import normalize_name
 
     key = normalize_name(name)
@@ -521,7 +524,56 @@ def match_candidate(cfg, name: str) -> str | None:
         cand_words = set(normalize_name(cand.name).replace(".", " ").split())
         if cand_words and cand_words <= words:
             return cid
+    if len(key) < 12:
+        return None
+    scores = sorted(((max(SequenceMatcher(None, key, normalize_name(n)).ratio() for n in cand.all_names()), cid)
+                     for cid, cand in cfg.candidates.items()), reverse=True)
+    if scores and scores[0][0] >= 0.92 and (len(scores) == 1 or scores[1][0] < scores[0][0] - 0.03):
+        return scores[0][1]
     return None
+
+
+def _yes_no_groups(cfg, selections) -> list[str | None]:
+    """Candidate id from the market heading of each Ano/Ne selection (None for other selections)."""
+    from polledge.odds.scrapers.mapping import BINARY_NAMES
+    from polledge.polls.cleaning import normalize_name
+
+    groups = []
+    for sel in selections:
+        cid = None
+        if BINARY_NAMES.get(normalize_name(sel.name)) in ("yes", "no"):
+            cid = next((c for c in (match_candidate(cfg, line) for line in reversed(sel.context)) if c), None)
+        groups.append(cid)
+    return groups
+
+
+def _screenshot_to_text(ctx) -> None:
+    """Screenshot -> AI transcription into the paste text area (before it is drawn)."""
+    from polledge.ai.review import available_providers
+    from polledge.ai.vision import MEDIA_TYPES, transcribe_odds
+
+    providers = available_providers()
+    with st.expander(_("Or upload a screenshot - AI reads the odds from it"), expanded=False):
+        if not providers:
+            st.info(_("Needs OPENAI_API_KEY or ANTHROPIC_API_KEY in the app secrets."))
+            return
+        image = st.file_uploader(_("Screenshot of the bookmaker page"), type=sorted(MEDIA_TYPES), key="paste_image")
+        names = {"anthropic": "Claude", "openai": "OpenAI"}
+        default = ctx.settings.ai.provider if ctx.settings.ai.provider in providers else providers[0]
+        provider = st.radio(_("AI provider"), providers, index=providers.index(default), horizontal=True,
+                            format_func=names.get, key="paste_ai_provider")
+        if image is not None:
+            st.image(image, width=480)
+        if st.button(_("Read odds from the image"), disabled=image is None, key="paste_ai"):
+            media_type = MEDIA_TYPES.get(image.name.rsplit(".", 1)[-1].lower(), image.type or "image/png")
+            try:
+                with st.spinner(_("The AI is reading the image...")):
+                    st.session_state["paste_text"] = transcribe_odds(provider, ctx.settings.ai, image.getvalue(),
+                                                                     media_type)
+            except PollEdgeError as exc:
+                st.error(str(exc))
+            else:
+                st.success(_("Done - check the text and the preview below; the AI can misread a number."))
 
 
 def _paste_odds(ctx, cfg) -> None:
@@ -537,6 +589,7 @@ def _paste_odds(ctx, cfg) -> None:
     c1, c2 = st.columns(2)
     bookmaker = c1.text_input(_("Bookmaker"), value="Tipsport", key="paste_bm")
     when = c2.time_input(_("Time"), value=time(datetime.now().hour, datetime.now().minute), key="paste_time")
+    _screenshot_to_text(ctx)
     text = st.text_area(_("Copied page text"), height=180, key="paste_text")
     if not text.strip():
         return
@@ -544,6 +597,19 @@ def _paste_odds(ctx, cfg) -> None:
     if not selections:
         st.warning(_("No names with odds found in the pasted text."))
         return
+
+    # A page with several yes/no markets ("X wins: Ano / Ne", "Y wins: Ano / Ne"): one outcome:<ID> market
+    # per heading, whatever market type is chosen above.
+    groups = _yes_no_groups(cfg, selections)
+    grouped = len({g for g in groups if g}) >= 2
+    if grouped:
+        selections, groups = map(list, zip(*[(s, g) for s, g in zip(selections, groups) if g]))
+        row_markets = [f"outcome:{g}" for g in groups]
+        spec = MarketSpec("outcome", groups[0])
+        st.info(_("Recognised {count} yes/no markets by their headings; the market type above is not used.",
+                  count=len(set(groups))))
+    else:
+        row_markets = [spec.id] * len(selections)
 
     binary = spec.kind in BINARY_OUTCOMES
     labels = {o: outcome_label(cfg, o) for o in BINARY_OUTCOMES[spec.kind]} if binary else \
@@ -563,9 +629,12 @@ def _paste_odds(ctx, cfg) -> None:
         else:
             guess = match_candidate(cfg, sel.name)
             choice = labels[guess] if guess else as_on_page
-        rows.append({_("Text on the page"): sel.name, _("Candidate / party"): choice, _("Odds"): sel.odds})
+        row = {_("Text on the page"): sel.name, _("Candidate / party"): choice, _("Odds"): sel.odds}
+        if grouped:
+            row = {_("Market"): market_label(cfg, row_markets[len(rows)]), **row}
+        rows.append(row)
     matched = sum(r[_("Candidate / party")] not in (skip, as_on_page) for r in rows)
-    if binary and matched == 0 and sum(match_candidate(cfg, s.name) is not None for s in selections) >= 2:
+    if binary and not grouped and matched == 0 and sum(match_candidate(cfg, s.name) is not None for s in selections) >= 2:
         st.warning(_("The pasted text lists candidates, but the market type '{market}' only has the outcomes "
                      "{outcomes}. Choose the market type 'Election winner' (or another candidate market) above.",
                      market=spec.describe({c: cfg.candidate_name(c) for c in cfg.candidates}),
@@ -573,8 +642,9 @@ def _paste_odds(ctx, cfg) -> None:
     st.write(_("Found {count} selections, {matched} matched to a candidate. Rows with — are not saved.",
                count=len(rows), matched=matched))
     edited = st.data_editor(
-        pd.DataFrame(rows), hide_index=True, width="stretch", key=f"paste_editor_{spec.id}",
-        disabled=[_("Text on the page")],
+        pd.DataFrame(rows), hide_index=True, width="stretch",
+        key="paste_editor_grouped" if grouped else f"paste_editor_{spec.id}",
+        disabled=[_("Market"), _("Text on the page")],
         column_config={
             _("Candidate / party"): st.column_config.SelectboxColumn(options=options, required=True),
             _("Odds"): st.column_config.NumberColumn(min_value=1.01, step=0.01, format="%.2f"),
@@ -589,7 +659,7 @@ def _paste_odds(ctx, cfg) -> None:
             outcome = row[_("Text on the page")] if choice == as_on_page else by_label.get(choice)
             if outcome is None or pd.isna(row[_("Odds")]):
                 continue
-            record = {"election_id": cfg.id, "bookmaker": canonical_bookmaker(bookmaker), "market": spec.id,
+            record = {"election_id": cfg.id, "bookmaker": canonical_bookmaker(bookmaker), "market": row_markets[i],
                       "outcome": outcome, "odds": row[_("Odds")], "timestamp": timestamp}
             try:
                 quotes.append(quote_from_record(record, _("row {n}", n=i + 1)))
@@ -696,16 +766,35 @@ def _stored_odds(ctx, cfg) -> None:
     st.dataframe(pd.DataFrame(books), hide_index=True, width="stretch", column_config={_("Margin"): PCT})
 
     st.subheader(_("All stored odds"))
+    if message := st.session_state.pop("odds_deleted", None):
+        st.success(message)
+    st.caption(_("Tick rows on the left of the table to delete them, or filter and delete everything shown."))
+    c1, c2, c3 = st.columns(3)
+    bookmakers = c1.multiselect(_("Bookmaker"), sorted({r.bookmaker for r in rows}), key="odds_filter_bm")
+    markets = c2.multiselect(_("Market"), sorted({r.market for r in rows}), key="odds_filter_market",
+                             format_func=lambda m: market_label(cfg, m))
+    sources = c3.multiselect(_("Source"), sorted({r.source for r in rows}), key="odds_filter_source")
+    shown = [r for r in rows if (not bookmakers or r.bookmaker in bookmakers) and (not markets or r.market in markets)
+             and (not sources or r.source in sources)]
     df = pd.DataFrame([{"id": r.id, _("Time"): to_local(r.timestamp), _("Bookmaker"): r.bookmaker,
                         _("Market"): market_label(cfg, r.market), _("Outcome"): outcome_label(cfg, r.outcome),
-                        _("Odds"): r.odds, _("Source"): r.source} for r in rows])
+                        _("Odds"): r.odds, _("Source"): r.source} for r in shown])
+    if df.empty:
+        st.info(_("No odds match the filter."))
+        return
     selection = st.dataframe(df, hide_index=True, width="stretch", on_select="rerun",
                              selection_mode="multi-row", column_config={"id": None, _("Odds"): ODDS}, key="odds_table")
     selected = [int(df.iloc[i]["id"]) for i in selection.selection.rows]
-    if st.button(_("Delete selected odds ({count})", count=len(selected)), disabled=not selected):
+    c1, c2 = st.columns(2)
+    delete_selected = c1.button(_("Delete selected odds ({count})", count=len(selected)), disabled=not selected,
+                                width="stretch")
+    filtered = bool(bookmakers or markets or sources)
+    delete_shown = c2.button(_("Delete all shown odds ({count})", count=len(shown)), disabled=not filtered,
+                             width="stretch", help=_("Filter first - a safeguard against deleting everything."))
+    if delete_selected or delete_shown:
         with ctx.session() as session:
-            n = delete_quotes(session, selected)
-        st.success(_("Deleted {count} odds.", count=n))
+            n = delete_quotes(session, selected if delete_selected else [r.id for r in shown])
+        st.session_state["odds_deleted"] = _("Deleted {count} odds.", count=n)
         st.rerun()
 
 

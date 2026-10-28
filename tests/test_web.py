@@ -293,3 +293,63 @@ def test_broken_database_election_does_not_break_discovery(tmp_path):
     found = discover_elections(settings)
     assert "bg_pres_2026_test" in found and "bad" not in found
     assert "fr_pres_2027" in found  # files are still loaded
+
+
+CONGRESS_EDITED = """Demokrati většina v Senátu i ve Sněmovně reprezentantů
+Ano 1.36
+Ne 2.76
+
+Republikáni většina v Senátu, Demokraté ve Sněmovně reprezentantů
+Ano 3.50
+Ne 1.25
+
+Republikáni většina v Senátu i ve Sněmovně reprezentantů
+Ano 10.00
+Ne 1.02
+"""
+
+
+def _paste_congress_page() -> None:
+    import os
+
+    import streamlit as st
+
+    from polledge.web import views
+    from polledge.web.state import context
+
+    assert context().settings.db_url() == os.environ["POLLEDGE_TEST_DB"]
+    st.session_state["election_id"] = "us_congress_2026"
+    views._paste_odds(context(), views.current_election())
+
+
+@pytest.mark.parametrize("variant", ["raw", "edited"])
+def test_paste_splits_several_yes_no_markets_by_heading(variant, database, monkeypatch):
+    from sqlalchemy import delete, select
+
+    from polledge.db import OddsQuoteRow
+    from polledge.web.state import reload_context
+
+    monkeypatch.setenv("POLLEDGE_DATABASE_URL", database)
+    monkeypatch.setenv("POLLEDGE_TEST_DB", database)
+    reload_context()
+    text = ((ROOT / "tests" / "fixtures" / "paste_fortuna_congress.txt").read_text(encoding="utf-8")
+            if variant == "raw" else CONGRESS_EDITED)
+    at = AppTest.from_function(_paste_congress_page, default_timeout=120)
+    at.run()
+    at.text_input(key="paste_bm").input("Fortuna")
+    at.text_area(key="paste_text").input(text)
+    at.run()
+    assert not at.exception and at.info  # "recognised N yes/no markets"
+    at.button(key="paste_save").click()
+    at.run()
+    assert at.success, [e.value for e in at.error]
+    with make_session_factory(database)() as s:
+        rows = s.scalars(select(OddsQuoteRow).where(OddsQuoteRow.election_id == "us_congress_2026")).all()
+        got = {(r.market, r.outcome): r.odds for r in rows}
+        s.execute(delete(OddsQuoteRow).where(OddsQuoteRow.election_id == "us_congress_2026"))
+        s.commit()
+    assert got[("outcome:DEM_SWEEP", "yes")] == 1.36 and got[("outcome:DEM_SWEEP", "no")] == 2.76
+    assert got[("outcome:R_SENATE_D_HOUSE", "yes")] == 3.5 and got[("outcome:R_SENATE_D_HOUSE", "no")] == 1.25
+    assert got[("outcome:REP_SWEEP", "yes")] == 10.0 and got[("outcome:REP_SWEEP", "no")] == 1.02
+    if variant == "raw":
+        assert got[("outcome:D_SENATE_R_HOUSE", "yes")] == 100.0 and len(got) == 7  # no "Ne" offered

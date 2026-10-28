@@ -50,6 +50,9 @@ def signed_line(name: str) -> tuple[str, float] | None:
 class PastedSelection:
     name: str
     odds: float
+    # Text lines between the previous selection and this one (market headings, dates, "Tip"), newest last;
+    # lets a page with several yes/no markets be split by their headings.
+    context: tuple[str, ...] = ()
 
 
 def _to_odds(text: str) -> float | None:
@@ -71,21 +74,37 @@ def _is_name(line: str) -> bool:
     return normalize_name(text) not in _SKIP_WORDS
 
 
+def is_binary_name(name: str) -> bool:
+    """Ano / Ne / over / under / +47.5 - a selection that only makes sense together with its market heading."""
+    from polledge.odds.scrapers.mapping import BINARY_NAMES
+
+    return normalize_name(name) in BINARY_NAMES or _SIGNED.match(name.strip()) is not None
+
+
 def parse_pasted_odds(text: str) -> list[PastedSelection]:
-    """Selections in page order; the first occurrence of a name wins (pages often repeat favourites)."""
-    found: dict[str, PastedSelection] = {}
-    last_name: str | None = None
+    """Selections in page order; the first occurrence of a name wins (pages often repeat favourites).
+
+    Yes/no-type names repeat in every market of a page, so for them the first occurrence wins per heading.
+    """
+    found: dict[tuple, PastedSelection] = {}
+    pending: list[str] = []  # name-like lines since the previous selection
+    context: tuple[str, ...] = ()
     for line in (cell for raw in text.splitlines() for cell in _clean_lines(raw)):
         same_line = _SIGNED_THEN_ODDS.match(line) or _NAME_THEN_ODDS.match(line)
         if same_line and _is_name(same_line.group(1)) and _to_odds(same_line.group(2)):
             name, odds = same_line.group(1).strip(), _to_odds(same_line.group(2))
-        elif _ODDS_ONLY.match(line) and last_name is not None and _to_odds(line):
-            name, odds = last_name, _to_odds(line)
+            headings = pending
+        elif _ODDS_ONLY.match(line) and pending and _to_odds(line):
+            name, odds = pending[-1], _to_odds(line)
+            headings = pending[:-1]
         else:
-            last_name = line if _is_name(line) else last_name
+            if _is_name(line):
+                pending.append(line)
             continue
-        key = normalize_name(name)
+        if headings:  # "Ne 2.76" right after "Ano 1.36" belongs to the same heading
+            context = tuple(headings)
+        key = (normalize_name(name), context if is_binary_name(name) else ())
         if key not in found:
-            found[key] = PastedSelection(name, odds)
-        last_name = None  # one odds value per name
+            found[key] = PastedSelection(name, odds, context)
+        pending = []  # one odds value per name
     return list(found.values())

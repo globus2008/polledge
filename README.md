@@ -247,6 +247,10 @@ U nepodporovaných kanceláří je nejrychlejší **vložení ze stránky** (Kur
 1. Na webu kanceláře otevři trh a zkopíruj celou stránku (Ctrl+A, Ctrl+C).
 2. V PollEdge zvol kancelář a typ trhu a text vlož.
 3. Aplikace sama najde dvojice jméno–kurz a přiřadí je ke kandidátům, i při jiném pořadí slov („Le Pen Marine“). V náhledu jde cokoli opravit a jedním tlačítkem se kurzy uloží.
+4. Stránka s několika trhy ano/ne (např. Fortuna: „Demokraté většina v Senátu i ve Sněmovně – Ano / Ne“ a další kombinace) se rozdělí podle nadpisů. Každý nadpis, který odpovídá kandidátovi nebo kombinaci, dostane vlastní trh `outcome:<ID>` a typ trhu nahoře se nepoužije.
+5. **Snímek obrazovky místo textu:** v rozbalovací části *Nebo nahraj snímek obrazovky* nahraj obrázek (PNG/JPG/WebP, do 5 MB) a zvol AI (OpenAI nebo Claude). AI kurzy přepíše do textového pole a dál to probíhá stejně jako u zkopírovaného textu, s náhledem a kontrolou před uložením. Jeden snímek stojí zlomek centu až jednotky centů.
+
+Uložené kurzy jdou smazat v *Kurzy → Uložené kurzy*: zaškrtnout řádky vlevo, nebo vyfiltrovat kancelář, trh či zdroj a smazat vše zobrazené.
 
 Další možnosti jsou ruční formulář a `import-odds` ze souboru. Všechny zdroje se v porovnání kombinují a vybírá se nejlepší kurz.
 
