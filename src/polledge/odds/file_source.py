@@ -9,6 +9,7 @@ from pathlib import Path
 
 import yaml
 
+from polledge.presentation import canonical_bookmaker
 from polledge.timeutil import local_to_utc
 from polledge.errors import PollEdgeError
 from polledge.model.markets import BINARY_OUTCOMES, parse_market
@@ -52,7 +53,7 @@ def quote_from_record(record: dict, where: str) -> OddsQuote:
         raise ValueError(_("{where}: decimal odds must be > 1 (got {odds})", where=where, odds=odds))
     return OddsQuote(
         election_id=str(record["election_id"]).strip(),
-        bookmaker=str(record["bookmaker"]).strip(),
+        bookmaker=canonical_bookmaker(str(record["bookmaker"])),
         market=spec.id,
         outcome=outcome,
         odds=odds,

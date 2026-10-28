@@ -1,0 +1,70 @@
+ufo-sprt-1p.png
+Prezidentské volby
+
+default.png
+Prezidentské volby 2028
+út 7. 11. 2028 15:00
+ Vítěz
+
+JD Vance
+4.00
+
+Alexandria Ocasio-Cortez
+7.00
+
+Jon Ossoff
+8.00
+
+Marco Rubio
+8.00
+
+Gavin Newsom
+9.00
+
+Kamala Harris
+20.00
+
+Josh Shapiro
+25.00
+
+Michelle Obama
+25.00
+
+Pete Buttigieg
+25.00
+
+Donald Trump Jr.
+30.00
+
+Ron DeSantis
+30.00
+
+Wes Moore
+30.00
+
+Gretchen Whitmer
+35.00
+
+Mark Kelly
+35.00
+
+Ivanka Trump
+40.00
+
+JB Pritzker
+40.00
+
+Nikki Haley
+40.00
+
+Andy Beshear
+50.00
+
+Eric Trump
+50.00
+
+Glenn Youngkin
+50.00
+
+Vivek Ramaswamy
+50.00

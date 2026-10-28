@@ -21,7 +21,7 @@ from polledge.odds.file_source import quote_from_record, source_for_path
 from polledge.odds.margin import latest_books
 from polledge.odds.repository import delete_quotes, load_quotes, quote_rows, store_quotes
 from polledge.polls.repository import load_polls
-from polledge.presentation import market_label, outcome_label
+from polledge.presentation import canonical_bookmaker, market_label, outcome_label
 from polledge.timeutil import to_local
 from polledge.web import charts
 from polledge.web.state import context, current_election, elections, model, money, reload_context
@@ -201,8 +201,12 @@ def _custom_market(cfg, sim) -> None:
                      width="stretch", column_config={_("Probability"): PCT})
 
 
+MARKET_ORDER = ["winner", "first_round_winner", "qualify_runoff", "finalists", "threshold", "share_over"]
+
+
 def _market_picker(cfg, candidates: list[str], key: str) -> MarketSpec | None:
-    kinds = sorted(MARKET_TYPES, key=lambda k: list(MARKET_TYPES).index(k))
+    # Fixed order, the most common market first (MARKET_TYPES is a set with no stable order).
+    kinds = [k for k in MARKET_ORDER if k in MARKET_TYPES]
     if cfg.type != "two_round":
         kinds = [k for k in kinds if k not in ("finalists", "qualify_runoff", "first_round_winner")]
     names = {cid: cfg.candidate_name(cid) for cid in candidates if cid != OTHER}
@@ -427,18 +431,26 @@ def _paste_odds(ctx, cfg) -> None:
     labels = {o: outcome_label(cfg, o) for o in BINARY_OUTCOMES[spec.kind]} if binary else \
         {cid: c.name for cid, c in cfg.candidates.items()}
     skip = "—"
-    options = [skip, *labels.values()]
+    as_on_page = _("(name as on the page)")  # keeps a selection the config does not know, like the scrapers do
+    options = [skip, *([] if binary else [as_on_page]), *labels.values()]
     rows = []
     for sel in selections:
         if binary:
             guess = next((o for o, label in labels.items() if label.lower() == sel.name.lower() or o == sel.name.lower()),
                          None)
+            choice = labels.get(guess, skip)
         else:
             guess = match_candidate(cfg, sel.name)
-        rows.append({_("Text on the page"): sel.name, _("Candidate / party"): labels.get(guess, skip),
-                     _("Odds"): sel.odds})
-    st.write(_("Found {count} selections, {matched} matched automatically. Unmatched rows (—) are not saved.",
-               count=len(rows), matched=sum(r[_("Candidate / party")] != skip for r in rows)))
+            choice = labels[guess] if guess else as_on_page
+        rows.append({_("Text on the page"): sel.name, _("Candidate / party"): choice, _("Odds"): sel.odds})
+    matched = sum(r[_("Candidate / party")] not in (skip, as_on_page) for r in rows)
+    if binary and matched == 0 and sum(match_candidate(cfg, s.name) is not None for s in selections) >= 2:
+        st.warning(_("The pasted text lists candidates, but the market type '{market}' only has the outcomes "
+                     "{outcomes}. Choose the market type 'Election winner' (or another candidate market) above.",
+                     market=spec.describe({c: cfg.candidate_name(c) for c in cfg.candidates}),
+                     outcomes=" / ".join(labels.values())))
+    st.write(_("Found {count} selections, {matched} matched to a candidate. Rows with — are not saved.",
+               count=len(rows), matched=matched))
     edited = st.data_editor(
         pd.DataFrame(rows), hide_index=True, width="stretch", key=f"paste_editor_{spec.id}",
         disabled=[_("Text on the page")],
@@ -452,10 +464,11 @@ def _paste_odds(ctx, cfg) -> None:
         timestamp = datetime.combine(datetime.now().date(), when)
         quotes, errors = [], []
         for i, row in edited.iterrows():
-            outcome = by_label.get(row[_("Candidate / party")])
+            choice = row[_("Candidate / party")]
+            outcome = row[_("Text on the page")] if choice == as_on_page else by_label.get(choice)
             if outcome is None or pd.isna(row[_("Odds")]):
                 continue
-            record = {"election_id": cfg.id, "bookmaker": bookmaker.strip(), "market": spec.id,
+            record = {"election_id": cfg.id, "bookmaker": canonical_bookmaker(bookmaker), "market": spec.id,
                       "outcome": outcome, "odds": row[_("Odds")], "timestamp": timestamp}
             try:
                 quotes.append(quote_from_record(record, _("row {n}", n=i + 1)))
@@ -468,8 +481,10 @@ def _paste_odds(ctx, cfg) -> None:
                 inserted, updated = store_quotes(session, quotes, "paste")
             st.success(_("{count} odds read, {inserted} new, {updated} updated.", count=len(quotes),
                          inserted=inserted, updated=updated))
+        elif not bookmaker.strip():
+            st.warning(_("Fill in the bookmaker."))
         elif not errors:
-            st.warning(_("Fill in the bookmaker and at least one odds value."))
+            st.warning(_("No row is assigned to an outcome - check the market type and the Candidate column."))
 
 
 def _enter_odds(ctx, cfg) -> None:
@@ -507,7 +522,7 @@ def _enter_odds(ctx, cfg) -> None:
             odds = row[_("Odds")]
             if odds is None or pd.isna(odds):
                 continue
-            record = {"election_id": cfg.id, "bookmaker": bookmaker.strip(), "market": spec.id,
+            record = {"election_id": cfg.id, "bookmaker": canonical_bookmaker(bookmaker), "market": spec.id,
                       "outcome": row["outcome"], "odds": odds, "timestamp": timestamp}
             try:
                 quotes.append(quote_from_record(record, _("row {n}", n=i + 1)))

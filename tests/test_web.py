@@ -130,3 +130,60 @@ def test_context_rebuilt_after_code_reload(database, monkeypatch):
 
     monkeypatch.setattr(state, "Settings", ReloadedSettings)
     assert state.context() is not first
+
+
+def _paste_page() -> None:
+    import os
+
+    import streamlit as st
+
+    from polledge.web import views
+    from polledge.web.state import context
+
+    assert context().settings.db_url() == os.environ["POLLEDGE_TEST_DB"]
+    st.session_state["election_id"] = "us_pres_2028"
+    views._paste_odds(context(), views.current_election())
+
+
+def test_paste_import_saves_winner_market(database, monkeypatch):
+    from sqlalchemy import select
+
+    from polledge.db import OddsQuoteRow
+    from polledge.web.state import reload_context
+
+    monkeypatch.setenv("POLLEDGE_DATABASE_URL", database)
+    monkeypatch.setenv("POLLEDGE_TEST_DB", database)
+    reload_context()
+    text = (ROOT / "tests" / "fixtures" / "paste_fortuna_us2028.txt").read_text(encoding="utf-8")
+    at = AppTest.from_function(_paste_page, default_timeout=120)
+    at.run()
+    assert at.selectbox(key="paste_kind").value == "winner"  # default market type
+    at.text_input(key="paste_bm").input("iFortuna")
+    at.text_area(key="paste_text").input(text)
+    at.run()
+    assert not at.exception and not at.warning
+    at.button(key="paste_save").click()
+    at.run()
+    assert at.success, [w.value for w in at.warning]
+    with make_session_factory(database)() as s:
+        rows = s.scalars(select(OddsQuoteRow).where(OddsQuoteRow.source == "paste")).all()
+    odds = {r.outcome: r.odds for r in rows}
+    assert {r.bookmaker for r in rows} == {"Fortuna"}  # "iFortuna" normalised
+    assert odds["VANCE"] == 4.0 and odds["HARRIS"] == 20.0 and len(odds) == 21
+    assert odds["Glenn Youngkin"] == 50.0  # unknown name kept as on the page
+
+
+def test_paste_warns_about_wrong_market_type(database, monkeypatch):
+    from polledge.web.state import reload_context
+
+    monkeypatch.setenv("POLLEDGE_DATABASE_URL", database)
+    monkeypatch.setenv("POLLEDGE_TEST_DB", database)
+    reload_context()
+    text = (ROOT / "tests" / "fixtures" / "paste_fortuna_us2028.txt").read_text(encoding="utf-8")
+    at = AppTest.from_function(_paste_page, default_timeout=120)
+    at.run()
+    at.selectbox(key="paste_kind").set_value("share_over")
+    at.run()
+    at.text_area(key="paste_text").input(text)
+    at.run()
+    assert any("Election winner" in w.value or "Vítěz" in w.value for w in at.warning)
