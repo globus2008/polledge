@@ -57,3 +57,31 @@ def test_match_candidate(text, expected):
 
     fr = load_election(ROOT / "config" / "elections" / "fr_pres_2027.yaml")
     assert match_candidate(fr, text) == expected
+
+
+# A screenshot converted to text by an AI chat: Markdown heading and table, long shots at 5000.
+MARKDOWN = """
+# České prezidentské volby 2028
+
+Vítěz
+
+| Kandidát                 | Kurz    |
+| ------------------------ | ------- |
+| Petr Pavel               | 1.33    |
+| Andrej Babiš             | 15.00   |
+| **Pavel Fischer**        | 30,00   |
+| Agáta Hanychová          | 5000.00 |
+
+Konec přijímání sázek: 31. 12. v 17:00
+"""
+
+
+def test_parse_markdown_table():
+    pairs = [(s.name, s.odds) for s in parse_pasted_odds(MARKDOWN)]
+    assert pairs == [("Petr Pavel", 1.33), ("Andrej Babiš", 15.0), ("Pavel Fischer", 30.0),
+                     ("Agáta Hanychová", 5000.0)]
+
+
+def test_parse_tab_separated_rows():
+    pairs = [(s.name, s.odds) for s in parse_pasted_odds("Kandidát\tKurz\nPetr Pavel\t1,33\nAndrej Babiš\t15\n")]
+    assert pairs == [("Petr Pavel", 1.33), ("Andrej Babiš", 15.0)]
