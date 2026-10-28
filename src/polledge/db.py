@@ -109,6 +109,29 @@ class ElectionResultRow(Base):
     entered_at: Mapped[datetime] = mapped_column(DateTime)
 
 
+class AiReviewRow(Base):
+    """AI second opinion on one signal (outcome at given odds), optionally linked to the recorded bet."""
+
+    __tablename__ = "ai_review"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    election_id: Mapped[str] = mapped_column(String(64), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+    market: Mapped[str] = mapped_column(String(128))
+    outcome: Mapped[str] = mapped_column(String(64))
+    bookmaker: Mapped[str] = mapped_column(String(64))
+    odds: Mapped[float] = mapped_column(Float)
+    kelly_stake: Mapped[float] = mapped_column(Float)
+    provider: Mapped[str] = mapped_column(String(32))
+    model: Mapped[str] = mapped_column(String(64))
+    verdict: Mapped[str] = mapped_column(String(16))
+    stake_multiplier: Mapped[float] = mapped_column(Float)
+    probability_estimate: Mapped[float] = mapped_column(Float)
+    result: Mapped[dict] = mapped_column(JSON)  # full review incl. reasons, risks, sources
+    context: Mapped[dict] = mapped_column(JSON)  # what the AI was given
+    bet_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
 class HttpCacheRow(Base):
     """Downloaded pages (Wikipedia, bookmakers), so repeated runs do not hit the sites again."""
 

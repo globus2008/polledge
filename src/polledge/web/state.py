@@ -20,7 +20,8 @@ from polledge.services import AppContext, open_app
 
 ROOT = Path(__file__).resolve().parents[3]
 CONFIG = ROOT / "config" / "settings.yaml"
-SECRET_NAMES = ("POLLEDGE_DATABASE_URL", "POLLEDGE_SMTP_PASSWORD", "POLLEDGE_SKIP_SOURCES")
+SECRET_NAMES = ("POLLEDGE_DATABASE_URL", "POLLEDGE_SMTP_PASSWORD", "POLLEDGE_SKIP_SOURCES", "OPENAI_API_KEY",
+                "ANTHROPIC_API_KEY")
 
 
 def secret(name: str) -> str | None:

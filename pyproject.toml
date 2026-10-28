@@ -25,7 +25,8 @@ dependencies = [
 
 [project.optional-dependencies]
 web = ["streamlit>=1.40"]
-dev = ["pytest>=8", "streamlit>=1.40"]
+ai = ["anthropic>=2.0", "openai>=3.0"]
+dev = ["pytest>=8", "streamlit>=1.40", "anthropic>=2.0", "openai>=3.0"]
 
 [project.scripts]
 polledge = "polledge.cli:app"

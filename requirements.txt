@@ -13,3 +13,5 @@ SQLAlchemy>=2.0
 psycopg[binary]>=3.2
 tzdata>=2024.1
 streamlit>=1.40
+anthropic>=2.0
+openai>=3.0

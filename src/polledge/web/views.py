@@ -296,6 +296,7 @@ def signals_page() -> None:
                   "bookmaker pays more than the {source} price implies.", source=cfg.reference_market.capitalize()))
         comparisons = build_market_comparisons(cfg, quotes, ctx.settings)
         as_of = date.today()
+        sim = None
     sig = ctx.settings.signals
 
     n_signals = sum(len(c.signals) for c in comparisons)
@@ -350,6 +351,8 @@ def signals_page() -> None:
                 notes.append(_("Sum of 1/best odds: {value} (no arbitrage)", value=f"{comp.arbitrage_sum:.4f}"))
         st.caption(" · ".join(notes))
 
+    _ai_reviews(ctx, cfg, comparisons, sim)
+
     if st.button(_("Save the signals as virtual bets in the journal"), type="primary", disabled=n_signals == 0):
         with ctx.session() as session:
             created = record_signals(session, cfg.id, comparisons)
@@ -358,6 +361,88 @@ def signals_page() -> None:
                             market_fair_probs(comparisons))
         st.success(_("Saved {count} new virtual bets to the journal.", count=len(created)))
     analysis_only()
+
+
+VERDICT_LABELS = {"bet": "✅", "reduce": "⚠️", "skip": "⛔"}
+
+
+def _ai_reviews(ctx, cfg, comparisons, sim) -> None:
+    """Second opinion by an AI on each current signal, with an adjusted stake to record."""
+    from polledge.ai.review import available_providers, make_reviewer
+    from polledge.ai.service import record_reviewed_bet, reviewed_stake, reviews_for, run_review
+
+    signals = [(c, o) for c in comparisons for o in c.signals]
+    if not signals:
+        return
+    st.subheader(_("AI review of the signals"))
+    providers = available_providers()
+    if not providers:
+        st.caption(_("Add OPENAI_API_KEY and/or ANTHROPIC_API_KEY to the app secrets to get an AI second opinion "
+                     "on each signal (news search, check of the model's assumptions, adjusted stake)."))
+        return
+    default = ctx.settings.ai.provider if ctx.settings.ai.provider in providers else providers[0]
+    names = {"openai": f"OpenAI ({ctx.settings.ai.openai_model})",
+             "anthropic": f"Claude ({ctx.settings.ai.anthropic_model})"}
+    provider = st.radio(_("AI provider"), providers, index=providers.index(default), horizontal=True,
+                        format_func=names.get, key="ai_provider")
+    st.caption(_("The AI searches current news and checks the model's assumptions. It is an opinion, not a "
+                 "guarantee; one review costs roughly a few crowns and takes up to a minute or two."))
+
+    for comp, o in signals:
+        title = f"{market_label(cfg, comp.market)} – {outcome_label(cfg, o.outcome)} @ {o.best_odds:.2f} " \
+                f"({o.best_bookmaker}) · {_('Stake')} {money(o.stake)}"
+        with st.expander(title, expanded=False):
+            key = f"ai_{comp.market}_{o.outcome}"
+            if st.button(_("Get AI review"), key=f"{key}_run"):
+                try:
+                    reviewer = make_reviewer(provider, ctx.settings.ai)
+                    with st.spinner(_("The AI is searching the news and reviewing the signal...")), \
+                            ctx.session() as session:
+                        run_review(session, reviewer, cfg, comp, o, sim, ctx.settings)
+                except PollEdgeError as exc:
+                    _error(exc)
+            with ctx.session() as session:
+                history = [r for r in reviews_for(session, cfg.id, comp.market, o.outcome)
+                           if abs(r.odds - (o.best_odds or 0)) < 1e-9 and r.bookmaker == o.best_bookmaker]
+            if not history:
+                st.caption(_("No AI review for this signal at these odds yet."))
+                continue
+            for review in history[:3]:
+                _show_review(ctx, cfg, o, review, reviewed_stake(review), record_reviewed_bet)
+
+
+def _show_review(ctx, cfg, outcome, review, adjusted, record_reviewed_bet) -> None:
+    res = review.result
+    st.markdown(f"**{VERDICT_LABELS.get(review.verdict, '')} {verdict_text(review.verdict)}** · "
+                f"{review.provider} {review.model} · {to_local(review.created_at).strftime(_('%Y-%m-%d %H:%M'))}")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric(_("Model"), f"{outcome.p_model:.1%}")
+    c2.metric(_("AI estimate"), f"{review.probability_estimate:.1%}")
+    c3.metric(_("Stake multiplier"), f"{review.stake_multiplier:.2f}")
+    c4.metric(_("Stake after review"), money(adjusted))
+    st.write(res.get("summary", ""))
+    if res.get("reasons"):
+        st.markdown("**" + _("Reasons") + "**\n" + "\n".join(f"- {r}" for r in res["reasons"]))
+    if res.get("risks"):
+        st.markdown("**" + _("Risks") + "**\n" + "\n".join(f"- {r}" for r in res["risks"]))
+    if res.get("sources"):
+        st.markdown("**" + _("Sources") + "**\n" + "\n".join(f"- [{s.get('title') or s['url']}]({s['url']})"
+                                                            for s in res["sources"]))
+    if review.bet_id:
+        st.success(_("Recorded in the journal (bet #{id}).", id=review.bet_id))
+    elif adjusted >= max(ctx.settings.signals.min_stake, 1):
+        if st.button(_("Record in the journal with stake {stake}", stake=money(adjusted)), key=f"ai_bet_{review.id}"):
+            with ctx.session() as session:
+                fresh = session.get(type(review), review.id)
+                bet = record_reviewed_bet(session, fresh, outcome)
+            st.success(_("Recorded in the journal (bet #{id}).", id=bet.id))
+    else:
+        st.caption(_("The adjusted stake is below the minimum stake - not worth betting."))
+
+
+def verdict_text(verdict: str) -> str:
+    return {"bet": _("Bet the recommended stake"), "reduce": _("Bet a reduced stake"),
+            "skip": _("Do not bet")}.get(verdict, verdict)
 
 
 def _sources_status(cfg, quotes: list[OddsQuote]) -> None:

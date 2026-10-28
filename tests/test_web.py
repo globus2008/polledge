@@ -187,3 +187,42 @@ def test_paste_warns_about_wrong_market_type(database, monkeypatch):
     at.text_area(key="paste_text").input(text)
     at.run()
     assert any("Election winner" in w.value or "Vítěz" in w.value for w in at.warning)
+
+
+def test_ai_review_flow_on_signals_page(database, monkeypatch):
+    import json
+    from types import SimpleNamespace
+
+    from sqlalchemy import select
+
+    from polledge.ai import review as ai_review
+    from polledge.db import AiReviewRow, PaperBetRow
+    from polledge.web.state import reload_context
+
+    monkeypatch.setenv("POLLEDGE_DATABASE_URL", database)
+    monkeypatch.setenv("POLLEDGE_TEST_DB", database)
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key-not-used")
+    answer = {"verdict": "reduce", "stake_multiplier": 0.5, "probability_estimate": 0.15, "confidence": "low",
+              "summary": "Test", "reasons": ["r"], "risks": ["k"], "sources": []}
+    response = SimpleNamespace(output_text=json.dumps(answer), model="gpt-5.5", status="completed", usage=None)
+    fake = SimpleNamespace(responses=SimpleNamespace(create=lambda **kw: response))
+    monkeypatch.setattr(ai_review, "make_reviewer",
+                        lambda provider, settings: ai_review.OpenAIReviewer("gpt-5.5", client=fake))
+    with make_session_factory(database)() as s:  # a clear signal: Betano pays 9.0 where Polymarket says 18 %
+        store_quotes(s, [OddsQuote("us_pres_2028", "Betano", "winner", "VANCE", 9.0, datetime(2026, 10, 28, 12))], "test")
+    reload_context()
+
+    at = AppTest.from_function(_run_page, args=("signals_page", "us_pres_2028"), default_timeout=120)
+    at.run()
+    assert not at.exception, [e.value for e in at.exception]
+    at.button(key="ai_winner_VANCE_run").click()
+    at.run()
+    assert not at.exception and not at.error, [e.value for e in at.error]
+    with make_session_factory(database)() as s:
+        review = s.scalars(select(AiReviewRow).where(AiReviewRow.outcome == "VANCE")).one()
+    record = at.button(key=f"ai_bet_{review.id}")
+    record.click()
+    at.run()
+    with make_session_factory(database)() as s:
+        bet = s.scalars(select(PaperBetRow).where(PaperBetRow.outcome == "VANCE")).one()
+        assert bet.stake == round(review.kelly_stake * 0.5) and bet.odds == 9.0

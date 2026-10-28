@@ -48,6 +48,13 @@ notify:                     # where `watch` sends new signals
     sender: ""
     recipients: []
 
+ai:                         # "AI review" button on the Signals page (second opinion on a signal)
+  provider: openai          # openai | anthropic - default when both API keys are set (switchable in the app)
+  openai_model: gpt-5.5
+  anthropic_model: claude-opus-5-5
+  max_searches: 5           # web searches per review
+  # API keys: OPENAI_API_KEY / ANTHROPIC_API_KEY in Streamlit secrets or the environment, never here.
+
 signals:
   edge_threshold: 0.05      # signal when edge > 5 %
   kelly_fraction: 0.25      # 1/4 Kelly

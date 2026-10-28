@@ -322,6 +322,25 @@ Zdrojový kód je celý anglicky. České texty jsou v katalogu `src/polledge/lo
 - **Vklad:** f* = (p·b − (1−p))/b, kde b = kurz − 1. Vklad = max(0, f*) × `kelly_fraction` (výchozí 1/4) × `bankroll`, s volitelným stropem `max_stake_pct`.
 - **Minimální vklad** (`min_stake`, výchozí 50 Kč): signál vznikne, jen když doporučený vklad dosáhne tohoto minima. Kelly dává u vysokých kurzů malé vklady, takže pravidlo zároveň odfiltruje vratké „edge“ u outsiderů. Například kurz 25 s edge +6 % vychází na vklad kolem 7 Kč z 10 000. Takové řádky se zobrazí s poznámkou „vklad pod minimem“.
 
+### AI posudek signálu
+
+Na stránce **Signály** má každý signál tlačítko **„Získat AI posudek“**. AI dostane všechno, co aplikace o signálu ví:
+- pravděpodobnost z modelu a z trhu, kurzy a marže,
+- scénáře kandidátů, riziko kandidatury a korekci 2. kola,
+- průměry průzkumů a známá omezení modelu.
+
+Pak vyhledá aktuální zprávy na webu a vrátí:
+- **verdikt**: vsadit / snížit vklad / nesázet,
+- **vlastní odhad pravděpodobnosti**,
+- **násobek Kellyho vkladu** (0–1) se zdůvodněním, riziky a zdroji.
+
+Vklad upravený násobkem jde jedním tlačítkem zapsat do deníku a posudek se k sázce uloží. Posudek nikdy nedoporučí víc, než kolik spočítal Kelly.
+
+- **Poskytovatel** jde přepnout přímo ve webu: OpenAI (`gpt-5.5`) nebo Claude (`claude-opus-5-5`). Výchozí poskytovatele a modely nastavíš v `settings.yaml` → `ai`.
+- **Klíče** se vkládají do Secrets ve Streamlit Cloud (lokálně do `.streamlit/secrets.toml`): `OPENAI_API_KEY` a/nebo `ANTHROPIC_API_KEY`. Nastavit stačí jeden.
+- **Cena:** jeden posudek stojí řádově jednotky korun (model a několik vyhledávání) a trvá až minutu či dvě.
+- Posudek je **názor, ne záruka**. Pomáhá zachytit to, co model z průzkumů nevidí: zprávy, kandidatury a pravidla vypořádání.
+
 ### Deník a vyhodnocení
 
 `signals --record` uloží každý signál jako virtuální sázku. Stejnou otevřenou sázku za stejný kurz neukládá dvakrát. Zároveň uloží snapshot pravděpodobností modelu i trhu (bez marže).

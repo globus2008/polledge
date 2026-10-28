@@ -81,6 +81,15 @@ class EmailSettings(BaseModel):
     recipients: list[str] = []
 
 
+class AiSettings(BaseModel):
+    """AI second opinion on signals ("AI review" button); keys come from env / Streamlit secrets."""
+
+    provider: Literal["openai", "anthropic"] = "openai"  # default choice when both keys exist
+    anthropic_model: str = "claude-opus-5-5"
+    openai_model: str = "gpt-5.5"
+    max_searches: int = Field(5, ge=0, le=20)
+
+
 class NotifySettings(BaseModel):
     channels: list[Literal["console", "email"]] = ["console"]
     email: EmailSettings = EmailSettings()
@@ -100,6 +109,7 @@ class Settings(BaseModel):
     signals: SignalSettings = SignalSettings()
     scraping: ScrapingSettings = ScrapingSettings()
     notify: NotifySettings = NotifySettings()
+    ai: AiSettings = AiSettings()
 
     base_dir: Path = Path(".")
     # Model params from settings.yaml before calibrated overrides (baseline for calibration).
