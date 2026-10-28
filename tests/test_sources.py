@@ -112,7 +112,7 @@ def test_reference_source_never_signals():
     t = datetime(2026, 10, 27, 12)
     quotes = [OddsQuote("e", "Polymarket", "winner", "A", 1 / 0.30, t), OddsQuote("e", "Polymarket", "winner", "B", 1 / 0.69, t)]
     model = {"A": 0.6, "B": 0.4}
-    settings = SignalSettings()
+    settings = SignalSettings(model_weight=1.0)  # model only: the test is about which odds count
     comp = compare_market("winner", model, latest_books(quotes, {"winner": model}, ["Polymarket"]), settings)
     a = next(o for o in comp.outcomes if o.outcome == "A")
     assert a.p_reference == pytest.approx(0.30)  # exchange price is the probability, not renormalised

@@ -306,13 +306,15 @@ def signals_page() -> None:
     c3.metric(_("Bankroll"), money(sig.bankroll))
     st.caption(_("Edge threshold {threshold} · Kelly {kelly} · bankroll {bankroll}",
                  threshold=f"{sig.edge_threshold:.0%}", kelly=sig.kelly_fraction, bankroll=money(sig.bankroll)))
+    st.caption(_("Final = model blended with the reference market (model weight {weight}); edge and stake use it.",
+                 weight=f"{sig.model_weight:.0%}"))
     only = st.toggle(_("Show only rows with a signal"), value=False)
 
     reference_names = ", ".join(sig.reference_bookmakers)
     for comp in comparisons:
         has_reference = any(o.p_reference is not None for o in comp.outcomes)
         rows = []
-        ordered = sorted(comp.outcomes, key=lambda o: (not o.in_model, -o.p_model, -(o.p_reference or 0)))
+        ordered = sorted(comp.outcomes, key=lambda o: (not o.in_model, -o.p_final, -(o.p_reference or 0)))
         for o in ordered:
             if (o.best_odds is None and o.p_reference is None) or (only and not o.is_signal):
                 continue
@@ -323,6 +325,7 @@ def signals_page() -> None:
             }
             if has_reference:
                 row[_("Reference ({sources})", sources=reference_names)] = o.p_reference
+                row[_("Final")] = o.p_final if o.in_model else None
             row.update({
                 _("Best odds"): o.best_odds,
                 _("Bookmaker"): o.best_bookmaker,
@@ -416,7 +419,7 @@ def _show_review(ctx, cfg, outcome, review, adjusted, record_reviewed_bet) -> No
     st.markdown(f"**{VERDICT_LABELS.get(review.verdict, '')} {verdict_text(review.verdict)}** · "
                 f"{review.provider} {review.model} · {to_local(review.created_at).strftime(_('%Y-%m-%d %H:%M'))}")
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric(_("Model"), f"{outcome.p_model:.1%}")
+    c1.metric(_("Final"), f"{outcome.p_final:.1%}")
     c2.metric(_("AI estimate"), f"{review.probability_estimate:.1%}")
     c3.metric(_("Stake multiplier"), f"{review.stake_multiplier:.2f}")
     c4.metric(_("Stake after review"), money(adjusted))

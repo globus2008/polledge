@@ -92,6 +92,8 @@
 "model as of {date}": "model k {date}"
 "Outcome": "Výsledek"
 "Model": "Model"
+"Final": "Výsledná"
+"Final = model blended with the reference market (model weight {weight}); edge and stake use it.": "Výsledná = model spojený s referenčním trhem (váha modelu {weight}); edge i vklad počítají s ní."
 "not in model": "není v modelu"
 "Market (no margin)": "Trh (bez marže)"
 "Best odds": "Nejlepší kurz"

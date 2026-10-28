@@ -317,9 +317,10 @@ Zdrojový kód je celý anglicky. České texty jsou v katalogu `src/polledge/lo
 
 - Implikovaná pravděpodobnost = 1/kurz. Marže = Σ(1/kurz) − 1. Pravděpodobnost bez marže = (1/kurz)/Σ, počítá se v rámci jednoho trhu jedné kanceláře.
 - Trh, kde kancelář nevypsala všechny výsledky, se označí jako neúplný a marže se u něj neodstraňuje. Binární trh potřebuje obě strany. Vícevýsledkový trh musí mít Σ(1/kurz) ≥ 1 a chybějící výsledky smí mít podle modelu nejvýš 2 %.
-- **Edge** = p_model × nejlepší kurz − 1. **Signál** vznikne, když edge > `edge_threshold` (výchozí 5 %).
+- **Spojení modelu s trhem** (`model_weight`, výchozí 0,5): kde existuje referenční trh (Polymarket), počítá se *výsledná pravděpodobnost* jako vážený průměr modelu a trhu v logitech: logit(p) = w·logit(p_model) + (1 − w)·logit(p_trh). Model z průzkumů nezná všechno (kandidatury, soudy, aliance), trh s penězi ano, a naopak trh bývá pomalý vůči novým průzkumům. Spojení obou je kalibrovanější než každý zvlášť a brání signálům, které stojí jen na tom, že se model s trhem rozchází. Příklad: model 64 %, Polymarket 43 % → výsledná ≈ 54 %; při kurzu 1,90 už to signál není. `model_weight: 1` vrátí původní chování (jen model). Bez referenčního trhu se použije model. Web i CLI ukazují model, trh i výslednou pravděpodobnost; edge, Kelly, deník i AI posudek pracují s výslednou.
+- **Edge** = p_výsledná × nejlepší kurz − 1. **Signál** vznikne, když edge > `edge_threshold` (výchozí 5 %).
 - **Arbitráž:** součet 1/nejlepší kurz přes všechny výsledky trhu (napříč kancelářemi) je menší než 1.
-- **Vklad:** f* = (p·b − (1−p))/b, kde b = kurz − 1. Vklad = max(0, f*) × `kelly_fraction` (výchozí 1/4) × `bankroll`, s volitelným stropem `max_stake_pct`.
+- **Vklad:** f* = (p·b − (1−p))/b (p = výsledná pravděpodobnost), kde b = kurz − 1. Vklad = max(0, f*) × `kelly_fraction` (výchozí 1/4) × `bankroll`, s volitelným stropem `max_stake_pct`.
 - **Minimální vklad** (`min_stake`, výchozí 50 Kč): signál vznikne, jen když doporučený vklad dosáhne tohoto minima. Kelly dává u vysokých kurzů malé vklady, takže pravidlo zároveň odfiltruje vratké „edge“ u outsiderů. Například kurz 25 s edge +6 % vychází na vklad kolem 7 Kč z 10 000. Takové řádky se zobrazí s poznámkou „vklad pod minimem“.
 
 ### AI posudek signálu

@@ -58,6 +58,10 @@ class SignalSettings(BaseModel):
     currency: str = "CZK"
     # Sources used only as a market reference (fair probability), never for best odds, signals or stakes.
     reference_bookmakers: list[str] = ["Polymarket"]
+    # Weight of the poll model when a reference market price exists for the outcome (logit average):
+    # 1 = model only, 0 = market only. A deep market carries information the polls miss (candidacies,
+    # campaign, tactical voting), so the probability used for edge and stake is shrunk towards it.
+    model_weight: float = Field(0.5, ge=0.0, le=1.0)
 
 
 class ScrapingSettings(BaseModel):

@@ -442,7 +442,7 @@ def _watch_once(election: list[str] | None, no_polls: bool) -> None:
                     continue
                 signals = [
                     Signal(o.market, market_label(cfg, o.market), o.outcome, outcome_label(cfg, o.outcome),
-                           o.best_bookmaker, o.best_odds, o.p_model, o.edge, o.stake, s.signals.currency)
+                           o.best_bookmaker, o.best_odds, o.p_final, o.edge, o.stake, s.signals.currency)
                     for o in created
                 ]
                 for n in notifiers:
@@ -486,7 +486,7 @@ def signals_cmd(
         source = (_("model as of {date}", date=fmt_date(result.as_of)) if cfg.uses_polls
                   else _("probabilities from {source}", source=cfg.reference_market.capitalize()))
         console.print(Panel.fit(f"[bold]{cfg.name}[/bold] – {source}\n{subtitle}"))
-        columns = (_("Outcome"), _("Model"), _("Market (no margin)"), _("Best odds"), _("Bookmaker"),
+        columns = (_("Outcome"), _("Model"), _("Market (no margin)"), _("Final"), _("Best odds"), _("Bookmaker"),
                    _("Edge"), _("Stake"), "")
         left = {_("Outcome"), _("Bookmaker"), ""}
         for comp in comparisons:
@@ -495,12 +495,13 @@ def signals_cmd(
             t = Table(title=market_label(cfg, comp.market), title_justify="left")
             for col in columns:
                 t.add_column(col, justify="left" if col in left else "right")
-            for o in sorted(comp.outcomes, key=lambda o: -o.p_model):
+            for o in sorted(comp.outcomes, key=lambda o: -o.p_final):
                 if o.best_odds is None or (only_signals and not o.is_signal):
                     continue
                 model_cell = pct(o.p_model) if o.in_model else "[dim]" + _("not in model") + "[/dim]"
                 t.add_row(
-                    outcome_label(cfg, o.outcome), model_cell, pct(o.p_market), num(o.best_odds),
+                    outcome_label(cfg, o.outcome), model_cell, pct(o.p_market),
+                    pct(o.p_final) if o.in_model else DASH, num(o.best_odds),
                     o.best_bookmaker or "", signed_pct(o.edge), money(o.stake) if o.stake > 0 else DASH,
                     "[bold green]" + _("SIGNAL") + "[/bold green]" if o.is_signal
                     else "[dim]" + _("stake below minimum") + "[/dim]" if o.below_min_stake else "",

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from statistics import mean
 
@@ -13,6 +14,23 @@ from polledge.signals.kelly import kelly_stake
 def edge(p_model: float, odds: float) -> float:
     """Expected return per unit staked: p * odds - 1."""
     return p_model * odds - 1.0
+
+
+_EPS = 1e-4
+
+
+def blend_probability(p_model: float, p_reference: float | None, model_weight: float) -> float:
+    """Logit-weighted average of the model and a reference market (model_weight 1 = model only).
+
+    Averaging log-odds keeps extreme probabilities sensible (0.98 and 0.5 do not average to 0.74
+    in probability space but to about 0.88) and is the usual way to pool two forecasts.
+    """
+    if p_reference is None or model_weight >= 1.0:
+        return p_model
+    pm = min(1 - _EPS, max(_EPS, p_model))
+    pr = min(1 - _EPS, max(_EPS, p_reference))
+    logit = model_weight * math.log(pm / (1 - pm)) + (1 - model_weight) * math.log(pr / (1 - pr))
+    return 1.0 / (1.0 + math.exp(-logit))
 
 
 def arbitrage_sum(best_odds: dict[str, float]) -> float:
@@ -39,6 +57,11 @@ class OutcomeComparison:
     is_signal: bool
     in_model: bool = True  # False: the bookmaker lists it, but the model has no polls for it
     below_min_stake: bool = False  # edge above the threshold, but the Kelly stake is below min_stake
+    p_final: float | None = None  # probability behind edge and stake: model blended with the reference market
+
+    def __post_init__(self) -> None:
+        if self.p_final is None:
+            self.p_final = self.p_model
 
 
 @dataclass
@@ -68,12 +91,15 @@ def compare_market(
     best_odds: dict[str, float] = {}
     for outcome in sorted(set(model_probs) | {o for b in books for o in b.odds}):
         in_model = outcome in model_probs
-        p = model_probs.get(outcome, 0.0)
+        p_model = model_probs.get(outcome, 0.0)
         # Reference sources (e.g. prediction markets) inform the market probability only.
         quoted = {b.bookmaker: b.odds[outcome] for b in tradable if outcome in b.odds}
         fair = [b.fair[outcome] for b in books if b.fair is not None and outcome in b.fair]
         reference_fair = [b.fair[outcome] for b in books
                           if b.bookmaker.lower() in reference and b.fair is not None and outcome in b.fair]
+        p_reference = mean(reference_fair) if reference_fair else None
+        # Edge and stake use the model shrunk towards the reference market where one exists.
+        p = blend_probability(p_model, p_reference, settings.model_weight) if in_model else p_model
         if quoted and not in_model:
             bookmaker, best = max(quoted.items(), key=lambda kv: kv[1])
             best_odds[outcome] = best
@@ -90,9 +116,9 @@ def compare_market(
             OutcomeComparison(
                 market=market,
                 outcome=outcome,
-                p_model=p,
+                p_model=p_model,
                 p_market=mean(fair) if fair else None,
-                p_reference=mean(reference_fair) if reference_fair else None,
+                p_reference=p_reference,
                 best_odds=best,
                 best_bookmaker=bookmaker,
                 odds_by_bookmaker=quoted,
@@ -102,6 +128,7 @@ def compare_market(
                            and stake >= settings.min_stake),
                 below_min_stake=(e is not None and e > settings.edge_threshold and 0 < stake < settings.min_stake),
                 in_model=in_model,
+                p_final=p,
             )
         )
     covered = bool(best_odds) and is_complete(market, best_odds, set(model_probs), model_probs)

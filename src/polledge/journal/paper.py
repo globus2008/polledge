@@ -49,7 +49,7 @@ def record_signals(
                     outcome=o.outcome,
                     bookmaker=o.best_bookmaker,
                     odds=o.best_odds,
-                    p_model=o.p_model,
+                    p_model=o.p_final,  # the probability the stake was based on
                     p_market=o.p_market,
                     edge=o.edge,
                     stake=round(o.stake, 2),

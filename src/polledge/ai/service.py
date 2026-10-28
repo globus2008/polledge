@@ -36,6 +36,9 @@ def build_context(election: ElectionConfig, comp: MarketComparison, outcome: Out
         "market": {"name": market_label(election, comp.market), "outcome": outcome_label(election, outcome.outcome)},
         "signal": {
             "model_probability": _r(outcome.p_model),
+            # Edge and stake use this: the model shrunk towards the prediction market (logit average).
+            "probability_used_for_edge_and_stake": _r(outcome.p_final),
+            "model_weight_in_blend": sig.model_weight if outcome.p_reference is not None else 1.0,
             "bookmaker_fair_probability_avg": _r(outcome.p_market),
             "prediction_market_probability": _r(outcome.p_reference),
             "best_odds": outcome.best_odds, "best_bookmaker": outcome.best_bookmaker,
@@ -44,7 +47,7 @@ def build_context(election: ElectionConfig, comp: MarketComparison, outcome: Out
             "edge": _r(outcome.edge),
         },
         "stake": {
-            "full_kelly_fraction": _r(kelly_fraction(outcome.p_model, outcome.best_odds)) if outcome.best_odds else None,
+            "full_kelly_fraction": _r(kelly_fraction(outcome.p_final, outcome.best_odds)) if outcome.best_odds else None,
             "kelly_multiplier_used": sig.kelly_fraction, "bankroll": sig.bankroll,
             "max_stake_pct": sig.max_stake_pct, "min_stake": sig.min_stake,
             "recommended_stake": round(outcome.stake, 2), "currency": sig.currency,
@@ -123,7 +126,7 @@ def record_reviewed_bet(session: Session, review: AiReviewRow, outcome: OutcomeC
     """Store the bet in the journal with the AI-adjusted stake and link it to the review."""
     bet = PaperBetRow(
         election_id=review.election_id, created_at=utcnow(), market=review.market, outcome=review.outcome,
-        bookmaker=review.bookmaker, odds=review.odds, p_model=outcome.p_model, p_market=outcome.p_market,
+        bookmaker=review.bookmaker, odds=review.odds, p_model=outcome.p_final, p_market=outcome.p_market,
         edge=outcome.edge or 0.0, stake=reviewed_stake(review), status="open",
     )
     session.add(bet)

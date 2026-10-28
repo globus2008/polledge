@@ -5,7 +5,7 @@ import pytest
 from polledge.config import SignalSettings
 from polledge.odds.base import OddsQuote
 from polledge.odds.margin import latest_books
-from polledge.signals.compare import arbitrage_sum, compare_market, edge, is_arbitrage
+from polledge.signals.compare import arbitrage_sum, blend_probability, compare_market, edge, is_arbitrage
 from polledge.signals.kelly import kelly_fraction, kelly_stake
 
 T = datetime(2026, 10, 27, 10)
@@ -95,3 +95,31 @@ def test_min_stake_filters_tiny_long_shot_signals():
     assert h.edge == pytest.approx(0.0625) and h.stake == pytest.approx(6.51, abs=0.01) and h.is_signal
     h = next(o for o in compare_market(market, probs, latest_books(quotes), strict).outcomes if o.outcome == "H")
     assert not h.is_signal and h.below_min_stake and h.stake == pytest.approx(6.51, abs=0.01)
+
+
+def test_blend_probability_is_a_logit_average():
+    assert blend_probability(0.64, None, 0.5) == 0.64
+    assert blend_probability(0.64, 0.43, 1.0) == 0.64
+    assert blend_probability(0.64, 0.43, 0.0) == pytest.approx(0.43)
+    assert blend_probability(0.5, 0.5, 0.3) == pytest.approx(0.5)
+    # equal weights: logit midpoint, not the probability midpoint
+    assert blend_probability(0.98, 0.5, 0.5) == pytest.approx(0.875, abs=1e-3)
+    assert 0.43 < blend_probability(0.64, 0.43, 0.5) < 0.64
+
+
+def test_edge_and_stake_use_probability_blended_with_reference_market():
+    # Le Pen example: model 64 %, Polymarket 43 %, Tipsport 1.90 -> model alone +21.6 % edge, blended no signal.
+    market = "winner"
+    quotes = _quotes(market, [("Tipsport", "LP", 1.90), ("Tipsport", "Z", 1.80),
+                              ("Polymarket", "LP", 1 / 0.43), ("Polymarket", "Z", 1 / 0.57)])
+    probs = {"LP": 0.64, "Z": 0.36}
+    model_only = SignalSettings(model_weight=1.0)
+    blended = SignalSettings(model_weight=0.5)
+    lp = next(o for o in compare_market(market, probs, latest_books(quotes), model_only).outcomes if o.outcome == "LP")
+    assert lp.p_final == 0.64 and lp.edge == pytest.approx(0.64 * 1.90 - 1) and lp.is_signal
+    lp = next(o for o in compare_market(market, probs, latest_books(quotes), blended).outcomes if o.outcome == "LP")
+    assert lp.p_model == 0.64 and lp.p_reference == pytest.approx(0.43, abs=1e-6)
+    assert lp.p_final == pytest.approx(blend_probability(0.64, lp.p_reference, 0.5))
+    assert lp.edge == pytest.approx(lp.p_final * 1.90 - 1)
+    assert lp.stake == pytest.approx(kelly_stake(lp.p_final, 1.90, 10000, 0.25, 0.05))
+    assert lp.best_bookmaker == "Tipsport" and not lp.is_signal
