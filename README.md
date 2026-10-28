@@ -128,7 +128,9 @@ Databáze: bez dalšího nastavení se používá lokální SQLite `data/polledg
 
 ### Přidání nových voleb
 
-Vytvoř soubor `config/elections/<id>.yaml`. Historické volby s výsledkem patří do `config/elections/history/`.
+**Bez zásahu do kódu, přímo na webu:** stránka *Volby* ukáže všechny volby a umožní přidat nové nebo upravit stávající. Výchozím bodem je šablona (ceny z Polymarketu, nebo průzkumy z Wikipedie) či kopie existujících voleb. Tlačítko *Zkontrolovat* ověří konfiguraci a na zkoušku načte průzkumy z Wikipedie i ceny z Polymarketu, včetně jmen, která se nepodařilo spárovat s kandidáty. Nic se přitom neukládá. *Uložit* zapíše konfiguraci do databáze (tabulka `app_setting`, klíč `election:<id>`). Web, kontejner na NAS i hodinová úloha na GitHubu ji použijí při dalším běhu, bez commitu a bez sestavení. Volby v databázi mají přednost před souborem se stejným id. Vadná konfigurace v databázi se jen zapíše do logu a ostatní volby fungují dál.
+
+Postaru lze volby přidat i souborem: vytvoř `config/elections/<id>.yaml`. Historické volby s výsledkem patří do `config/elections/history/`.
 
 ```yaml
 id: cz_parl_2029

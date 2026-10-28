@@ -226,3 +226,70 @@ def test_ai_review_flow_on_signals_page(database, monkeypatch):
     with make_session_factory(database)() as s:
         bet = s.scalars(select(PaperBetRow).where(PaperBetRow.outcome == "VANCE")).one()
         assert bet.stake == round(review.kelly_stake * 0.5) and bet.odds == 9.0
+
+
+BG_YAML = """\
+id: bg_pres_2026_test
+name: "Bulharsko – test"
+type: two_round
+election_date: 2026-11-01
+probability_source: market
+reference_market: polymarket
+candidates:
+  IOTOVA: {name: "Iliana Iotova"}
+  GYUROV: {name: "Andrey Gyurov"}
+bookmakers:
+  polymarket:
+    pages: ["bulgaria-presidential-election"]
+    markets: {"bulgaria-presidential-election": winner}
+"""
+
+
+def _elections_page() -> None:
+    import os
+
+    from polledge.web.elections_view import elections_page
+    from polledge.web.state import context
+
+    assert context().settings.db_url() == os.environ["POLLEDGE_TEST_DB"]
+    elections_page()
+
+
+def test_elections_page_saves_config_into_database(database, monkeypatch):
+    from polledge.config import discover_elections
+    from polledge.services import ELECTION_KEY_PREFIX, delete_db_election, open_app
+    from polledge.web.state import reload_context
+
+    monkeypatch.setenv("POLLEDGE_DATABASE_URL", database)
+    monkeypatch.setenv("POLLEDGE_TEST_DB", database)
+    reload_context()
+    at = AppTest.from_function(_elections_page, default_timeout=120)
+    at.run()
+    assert not at.exception
+    area = at.text_area[0]
+    area.input("id: [broken").run()
+    at.button[1].click().run()  # Save
+    assert at.error and not at.exception  # invalid YAML is reported, nothing stored
+    at.text_area[0].input(BG_YAML).run()
+    at.button[1].click().run()
+    assert not at.exception
+    assert at.success and "Bulharsko" in at.success[0].value
+
+    # A fresh process (NAS container, GitHub job) sees the election without any file.
+    ctx = open_app()
+    assert ctx.settings.db_url() == database
+    cfg = discover_elections(ctx.settings)["bg_pres_2026_test"]
+    assert cfg.candidate_name("IOTOVA") == "Iliana Iotova" and not cfg.uses_polls
+    with ctx.session() as s:
+        assert delete_db_election(s, "bg_pres_2026_test")
+        assert not delete_db_election(s, "bg_pres_2026_test")
+    assert ELECTION_KEY_PREFIX == "election:"
+
+
+def test_broken_database_election_does_not_break_discovery(tmp_path):
+    from polledge.config import Settings, discover_elections
+
+    settings = Settings(base_dir=ROOT, db_elections={"bad": "id: bad\nname: x", "bg": BG_YAML})
+    found = discover_elections(settings)
+    assert "bg_pres_2026_test" in found and "bad" not in found
+    assert "fr_pres_2027" in found  # files are still loaded

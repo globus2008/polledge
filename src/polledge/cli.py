@@ -411,8 +411,11 @@ def _watch_once(election: list[str] | None, no_polls: bool) -> None:
     from polledge.journal.paper import record_signals, record_snapshot
     from polledge.notify.base import Signal
     from polledge.notify.channels import build_notifiers
-    from polledge.services import compare_election, fetch_odds, market_fair_probs, params_payload, update_polls
+    from polledge.services import (
+        compare_election, fetch_odds, market_fair_probs, params_payload, refresh_db_elections, update_polls,
+    )
 
+    refresh_db_elections(state())  # elections added in the web app since the container started
     s = state().settings
     notifiers = build_notifiers(s.notify, console)
     fetcher = _make_fetcher()

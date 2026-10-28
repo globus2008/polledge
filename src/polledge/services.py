@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from polledge.timeutil import utcnow
@@ -19,6 +20,7 @@ from polledge.config import (
     apply_calibration,
     load_settings,
     model_params_for,
+    parse_election_yaml,
     read_yaml,
 )
 from polledge.db import AppSettingRow, make_session_factory
@@ -38,6 +40,7 @@ from polledge.i18n import _
 log = logging.getLogger(__name__)
 
 CALIBRATION_KEY = "calibrated_model"
+ELECTION_KEY_PREFIX = "election:"  # app_setting rows holding election configs added in the web app
 
 
 @dataclass
@@ -68,7 +71,41 @@ def open_app(config: Path | None = None) -> AppContext:
             calibration = import_legacy_calibration(session, settings)
     if calibration:
         apply_calibration(settings, calibration.get("model"), "database (app_setting)")
+    refresh_db_elections(ctx)
     return ctx
+
+
+def load_db_elections(session: Session) -> dict[str, str]:
+    rows = session.scalars(select(AppSettingRow).where(AppSettingRow.key.startswith(ELECTION_KEY_PREFIX)))
+    return {row.key[len(ELECTION_KEY_PREFIX):]: row.value.get("yaml", "") for row in rows}
+
+
+def refresh_db_elections(ctx: AppContext) -> None:
+    """Re-read election configs from the database (a long-running watch or the web app sees new ones)."""
+    with ctx.session() as session:
+        ctx.settings.db_elections = load_db_elections(session)
+
+
+def save_db_election(session: Session, text: str) -> ElectionConfig:
+    """Validate and store an election config; returns it. Raises ConfigError if invalid."""
+    cfg = parse_election_yaml(text)
+    key = ELECTION_KEY_PREFIX + cfg.id
+    row = session.get(AppSettingRow, key)
+    if row is None:
+        session.add(AppSettingRow(key=key, value={"yaml": text}, updated_at=utcnow()))
+    else:
+        row.value, row.updated_at = {"yaml": text}, utcnow()
+    session.commit()
+    return cfg
+
+
+def delete_db_election(session: Session, election_id: str) -> bool:
+    row = session.get(AppSettingRow, ELECTION_KEY_PREFIX + election_id)
+    if row is None:
+        return False
+    session.delete(row)
+    session.commit()
+    return True
 
 
 def load_calibration(session: Session) -> dict | None:

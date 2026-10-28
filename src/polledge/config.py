@@ -118,6 +118,9 @@ class Settings(BaseModel):
     base_dir: Path = Path(".")
     # Model params from settings.yaml before calibrated overrides (baseline for calibration).
     uncalibrated_model: ModelParams | None = None
+    # Election configs stored in the database (added in the web app), as YAML text by id.
+    # They are merged with config/elections/*.yaml and win over a file with the same id.
+    db_elections: dict[str, str] = {}
 
     def resolve(self, path: Path) -> Path:
         return path if path.is_absolute() else self.base_dir / path
@@ -342,6 +345,20 @@ def load_election(path: Path) -> ElectionConfig:
         raise ConfigError(_("Invalid election config in {path}: {error}", path=path, error=format_validation(exc))) from exc
 
 
+def parse_election_yaml(text: str, source: str = "YAML") -> ElectionConfig:
+    """Election config from YAML text (database, web editor); ConfigError with a readable message."""
+    try:
+        data = yaml.safe_load(text) or {}
+    except yaml.YAMLError as exc:
+        raise ConfigError(_("Invalid YAML in {path}: {error}", path=source, error=exc)) from exc
+    if not isinstance(data, dict):
+        raise ConfigError(_("{path}: the election config must be a mapping (key: value)", path=source))
+    try:
+        return ElectionConfig(**data)
+    except ValidationError as exc:
+        raise ConfigError(_("Invalid election config in {path}: {error}", path=source, error=format_validation(exc))) from exc
+
+
 def discover_elections(settings: Settings, include_history: bool = False) -> dict[str, ElectionConfig]:
     root = settings.resolve(settings.elections_dir)
     pattern = "**/*.yaml" if include_history else "*.yaml"
@@ -353,7 +370,33 @@ def discover_elections(settings: Settings, include_history: bool = False) -> dic
             raise ConfigError(_("Duplicate election id '{id}' ({path} and {other})", id=cfg.id, path=path, other=paths[cfg.id]))
         found[cfg.id] = cfg
         paths[cfg.id] = path
+    for election_id, text in settings.db_elections.items():
+        try:
+            cfg = parse_election_yaml(text, f"database:{election_id}")
+        except ConfigError as exc:  # one broken entry must not take the whole app down
+            log.error("%s", exc)
+            continue
+        if cfg.result is None or include_history:
+            found[cfg.id] = cfg
     return found
+
+
+def election_files(settings: Settings) -> dict[str, Path]:
+    """{election id: YAML file} for the configs in the repository."""
+    files = {}
+    for path in sorted(settings.resolve(settings.elections_dir).glob("**/*.yaml")):
+        try:
+            files[read_yaml(path).get("id")] = path
+        except ConfigError:
+            continue
+    return files
+
+
+def election_sources(settings: Settings) -> dict[str, str]:
+    """{election id: "file" | "database"} - where the effective config of each election comes from."""
+    sources = {eid: "file" for eid in election_files(settings)}
+    sources.update({eid: "database" for eid in settings.db_elections})
+    return sources
 
 
 def get_election(settings: Settings, election_id: str) -> ElectionConfig:
