@@ -187,19 +187,31 @@ class ElectionConfig(BaseModel):
     name: str
     type: Literal["single_round", "two_round"] = "single_round"
     election_date: date
-    wiki_page: str
+    # Where the probabilities come from: "polls" = the poll model, "market" = prices of a reference
+    # market (e.g. Polymarket) when polls cannot be modelled (US primaries + electoral college, seats).
+    probability_source: Literal["polls", "market"] = "polls"
+    reference_market: str = "polymarket"  # bookmaker key whose prices act as the model in "market" mode
+    wiki_page: str | None = None
     default_sample_size: int = 1000
     candidates: dict[str, Candidate]
-    first_round: RoundConfig
+    first_round: RoundConfig | None = None
     runoff: RoundConfig | None = None
     model: dict[str, Any] = {}
     bookmakers: dict[str, BookmakerConfig] = {}
     result: ElectionResult | None = None
 
+    @property
+    def uses_polls(self) -> bool:
+        return self.probability_source == "polls"
+
     @model_validator(mode="after")
     def _check(self) -> "ElectionConfig":
         if OTHER in self.candidates:
             raise ValueError(f"'{OTHER}' is a reserved id")
+        if self.uses_polls and (not self.wiki_page or self.first_round is None):
+            raise ValueError("probability_source 'polls' needs wiki_page and first_round")
+        if not self.uses_polls and self.reference_market not in self.bookmakers:
+            raise ValueError(f"reference_market '{self.reference_market}' must be one of the bookmakers")
         known = set(self.candidates)
         for rnd in filter(None, [self.first_round, self.runoff]):
             unknown = (set(rnd.scenario.require) | set(rnd.scenario.exclude)) - known

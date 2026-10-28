@@ -1,0 +1,61 @@
+# US presidential election 2028 - "winner" combines the primaries and the electoral college, which
+# polls cannot model; the Polymarket price serves as the probability ("market" mode) and Betano odds
+# are compared against it. Names differ between the sources, hence the aliases.
+id: us_pres_2028
+name: "USA – prezidentské volby 2028"
+type: single_round
+election_date: 2028-11-07
+probability_source: market
+reference_market: polymarket
+
+candidates:
+  VANCE: {name: "JD Vance", aliases: ["J.D. Vance", "James David Vance"]}
+  OCASIO_CORTEZ: {name: "Alexandria Ocasio-Cortez", aliases: ["AOC"]}
+  NEWSOM: {name: "Gavin Newsom"}
+  RUBIO: {name: "Marco Rubio"}
+  OSSOFF: {name: "Jon Ossoff"}
+  HARRIS: {name: "Kamala Harris"}
+  SHAPIRO: {name: "Josh Shapiro"}
+  BUTTIGIEG: {name: "Pete Buttigieg"}
+  DESANTIS: {name: "Ron DeSantis"}
+  BESHEAR: {name: "Andy Beshear", aliases: ["Andrew Beshear"]}
+  TALARICO: {name: "James Talarico"}
+  TRUMP: {name: "Donald Trump"}
+  TRUMP_JR: {name: "Donald Trump Jr.", aliases: ["Donald Trump Jr"]}
+  IVANKA_TRUMP: {name: "Ivanka Trump"}
+  JOHNSON_ROCK: {name: "Dwayne Johnson", aliases: ["Dwayne 'The Rock' Johnson", "The Rock"]}
+  CARLSON: {name: "Tucker Carlson"}
+  KELLY: {name: "Mark Kelly"}
+  MOORE: {name: "Wes Moore"}
+  MASSIE: {name: "Thomas Massie"}
+  KHANNA: {name: "Ro Khanna"}
+  WARNOCK: {name: "Raphael Warnock"}
+  PRITZKER: {name: "JB Pritzker", aliases: ["J. B. Pritzker", "J.B. Pritzker"]}
+  CRUZ: {name: "Ted Cruz"}
+  EMANUEL: {name: "Rahm Emanuel"}
+  OBAMA_M: {name: "Michelle Obama"}
+  ABBOTT: {name: "Greg Abbott"}
+  HALEY: {name: "Nikki Haley"}
+  WHITMER: {name: "Gretchen Whitmer"}
+  HUCKABEE_SANDERS: {name: "Sarah Huckabee Sanders", aliases: ["Sara Huckabee Sanders"]}
+  DONALDS: {name: "Byron Donalds"}
+  CRENSHAW: {name: "Dan Crenshaw"}
+  COOPER: {name: "Roy Cooper"}
+  GABBARD: {name: "Tulsi Gabbard"}
+  POMPEO: {name: "Mike Pompeo"}
+  KEMP: {name: "Brian Kemp"}
+  HAWLEY: {name: "Josh Hawley"}
+  RAMASWAMY: {name: "Vivek Ramaswamy"}
+  NOEM: {name: "Kristi Noem"}
+  CLINTON_H: {name: "Hillary Clinton"}
+
+bookmakers:
+  betano:
+    pages:
+      - "https://www.betano.cz/zapas-sance/presidential-election-2028/58466838/"
+    markets:
+      "Vítěz": winner
+  polymarket:
+    pages: ["presidential-election-winner-2028"]
+    markets:
+      "presidential-election-winner-2028": winner

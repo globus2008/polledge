@@ -248,6 +248,12 @@ U nepodporovaných kanceláří zadávej kurzy ručně přes `import-odds` nebo 
 
 Nový scraper je třída `OddsSource` zaregistrovaná v `src/polledge/odds/scrapers/__init__.py` (viz Betano v `betano.py`). Ke stahování používá `PoliteFetcher` a k převodu názvů na naše ID `NameMapper`.
 
+**Volby bez modelu z průzkumů (`probability_source: market`).** U některých trhů nejde rozumně modelovat výsledek z průzkumů. Typicky jde o americké prezidentské volby (primárky a sbor volitelů v jednom trhu) nebo o většinu v Kongresu (rozhodují křesla). Takové volby nemají `wiki_page` ani `first_round` a roli modelu přebírá referenční trh (`reference_market: polymarket`). Signál pak znamená, že česká kancelář platí víc, než odpovídá ceně na Polymarketu. Sází se pořád jen u kanceláře. U outsiderů s pravděpodobností kolem 1–5 % jsou takové signály vratké, protože ceny na Polymarketu tam kolísají. Ceny z Polymarketu se berou přímo jako pravděpodobnosti (burza nemá marži) a nepřepočítávají se na 100 %.
+
+Nakonfigurované americké volby:
+- `us_pres_2028`: prezidentské volby 2028, Betano vs. Polymarket.
+- `us_house_2026` a `us_senate_2026`: většina ve Sněmovně a v Senátu 2026. Jen přehled cen z Polymarketu, protože žádná podporovaná kancelář je nevypisuje.
+
 **Volby s živými kurzy:** **FR 2027** má automaticky ceny z Polymarketu (reference) a Betano se pro ni hlídá podle klíčových slov. Signály se objeví, jakmile ji Betano vypíše nebo zadáte kurzy české kanceláře ručně. Betano i Fortuna nabízejí **české prezidentské volby 2028** (`cz_pres_2028`), které se stahují z Betana. Pozor, průzkumy k nim jsou slabé:
 
 - je jich jen pár,

@@ -8,7 +8,7 @@ import httpx
 import pytest
 
 from polledge.cache import PageCache
-from polledge.config import BookmakerConfig, ScrapingSettings, SignalSettings, load_election
+from polledge.config import BookmakerConfig, ScrapingSettings, Settings, SignalSettings, load_election
 from polledge.db import make_session_factory
 from polledge.odds.base import OddsQuote
 from polledge.odds.margin import latest_books
@@ -115,7 +115,7 @@ def test_reference_source_never_signals():
     settings = SignalSettings()
     comp = compare_market("winner", model, latest_books(quotes, {"winner": model}, ["Polymarket"]), settings)
     a = next(o for o in comp.outcomes if o.outcome == "A")
-    assert a.p_reference == pytest.approx(0.30 / 0.99, rel=1e-3)  # sum 0.99 accepted for an exchange
+    assert a.p_reference == pytest.approx(0.30)  # exchange price is the probability, not renormalised
     assert a.best_odds is None and a.edge is None and not a.is_signal and a.stake == 0
     assert comp.margins == {} and comp.arbitrage_sum is None
 
@@ -126,3 +126,37 @@ def test_reference_source_never_signals():
     a = next(o for o in comp.outcomes if o.outcome == "A")
     assert a.best_bookmaker == "Tipsport" and a.best_odds == 2.2 and a.is_signal
     assert set(comp.margins) == {"Tipsport"}
+
+
+def test_market_mode_compares_bookmaker_with_reference():
+    from polledge.services import build_market_comparisons
+
+    us = load_election(ROOT / "config" / "elections" / "us_pres_2028.yaml")
+    t = datetime(2026, 10, 28, 9)
+    quotes = [
+        OddsQuote(us.id, "Polymarket", "winner", "VANCE", 1 / 0.18, t),
+        OddsQuote(us.id, "Polymarket", "winner", "HARRIS", 1 / 0.043, t),
+        OddsQuote(us.id, "Betano", "winner", "VANCE", 5.0, t),
+        OddsQuote(us.id, "Betano", "winner", "HARRIS", 25.0, t),
+        OddsQuote(us.id, "Betano", "winner", "Celebrity", 500.0, t),
+    ]
+    (comp,) = build_market_comparisons(us, quotes, Settings())
+    by = {o.outcome: o for o in comp.outcomes}
+    assert by["VANCE"].p_model == pytest.approx(0.18) and by["VANCE"].edge == pytest.approx(0.18 * 5 - 1)
+    assert by["HARRIS"].is_signal and by["HARRIS"].best_bookmaker == "Betano"
+    assert not by["Celebrity"].in_model and not by["Celebrity"].is_signal
+
+
+def test_market_mode_config_validation():
+    from pydantic import ValidationError
+
+    from polledge.config import ElectionConfig
+
+    base = {"id": "x", "name": "x", "election_date": "2028-11-07", "candidates": {"A": {"name": "A"}}}
+    with pytest.raises(ValidationError):
+        ElectionConfig(**base)  # polls mode needs wiki_page and first_round
+    with pytest.raises(ValidationError):
+        ElectionConfig(**base, probability_source="market")  # reference market must be configured
+    cfg = ElectionConfig(**base, probability_source="market",
+                         bookmakers={"polymarket": {"pages": ["slug"], "markets": {"slug": "winner"}}})
+    assert not cfg.uses_polls

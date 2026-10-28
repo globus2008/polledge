@@ -38,6 +38,7 @@ class BookMarket:
     odds: dict[str, float]
     timestamp: datetime
     complete: bool
+    exchange: bool = False  # prediction market / exchange: the price already is the probability
 
     @property
     def margin(self) -> float:
@@ -45,7 +46,13 @@ class BookMarket:
 
     @property
     def fair(self) -> dict[str, float] | None:
-        """Margin-free probabilities; None when the market is incomplete."""
+        """Margin-free probabilities; None when a bookmaker's market is incomplete.
+
+        Exchange prices are taken as they are: normalising them would inflate every outcome when
+        long shots are missing from the listing.
+        """
+        if self.exchange:
+            return {k: implied_probability(v) for k, v in self.odds.items()}
         return remove_margin(self.odds) if self.complete else None
 
 
@@ -89,9 +96,9 @@ def latest_books(quotes: list[OddsQuote], model_probs: dict[str, dict[str, float
     for (election_id, bookmaker, market), by_outcome in sorted(latest.items()):
         odds = {o: q.odds for o, q in by_outcome.items()}
         probs = (model_probs or {}).get(market)
-        min_total = EXCHANGE_MIN_TOTAL if bookmaker.lower() in exchange_names else 1.0
+        exchange = bookmaker.lower() in exchange_names
+        min_total = EXCHANGE_MIN_TOTAL if exchange else 1.0
         complete = is_complete(market, odds, set(probs) if probs else None, probs, min_total)
-        books.append(
-            BookMarket(election_id, bookmaker, market, odds, max(q.timestamp for q in by_outcome.values()), complete)
-        )
+        books.append(BookMarket(election_id, bookmaker, market, odds,
+                                max(q.timestamp for q in by_outcome.values()), complete, exchange))
     return books

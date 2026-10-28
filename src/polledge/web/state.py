@@ -35,12 +35,25 @@ def secret(name: str) -> str | None:
 
 @st.cache_resource(show_spinner=False)
 def _context() -> AppContext:
-    for name in SECRET_NAMES:
-        value = secret(name)
+    # Streamlit copies secrets.toml into os.environ the first time st.secrets is read, which would
+    # silently replace an explicit environment override (e.g. a test database). Capture the
+    # environment first, resolve every value, and only then write the result back.
+    explicit = {name: os.environ.get(name) for name in SECRET_NAMES}
+    resolved = {name: explicit[name] or _secrets_file_value(name) for name in SECRET_NAMES}
+    for name, value in resolved.items():
         if value:
             os.environ[name] = value
+        else:
+            os.environ.pop(name, None)
     setup_logging(None)
     return open_app(CONFIG)
+
+
+def _secrets_file_value(name: str) -> str | None:
+    try:
+        return st.secrets.get(name)
+    except Exception:  # no secrets file at all
+        return None
 
 
 def context() -> AppContext:

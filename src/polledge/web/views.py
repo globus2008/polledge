@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import tempfile
-from datetime import datetime, time
+from datetime import date, datetime, time
 from pathlib import Path
 
 import numpy as np
@@ -44,6 +44,9 @@ def model_page() -> None:
     ctx = context()
     cfg = current_election()
     st.title(cfg.name)
+    if not cfg.uses_polls:
+        _market_overview(ctx, cfg)
+        return
 
     with st.sidebar:
         if st.button(_("Update polls from Wikipedia"), width="stretch"):
@@ -127,6 +130,37 @@ def model_page() -> None:
                  hl=params.half_life_days, sys=params.sigma_sys_pp, hor=params.sigma_horizon_pp_per_sqrt_day))
 
 
+def _market_overview(ctx, cfg) -> None:
+    """Elections without a poll model: probabilities of the reference market and the best bookmaker odds."""
+    from polledge.services import build_market_comparisons
+
+    source = cfg.reference_market.capitalize()
+    st.info(_("This election has no poll model: the probabilities come from {source}. A signal means a "
+              "bookmaker pays more than the {source} price implies.", source=source))
+    with ctx.session() as session:
+        quotes = load_quotes(session, cfg.id)
+    comparisons = build_market_comparisons(cfg, quotes, ctx.settings)
+    if not comparisons:
+        st.info(_("No prices from {source} yet - they are downloaded every hour.", source=source))
+        return
+    c1, c2 = st.columns(2)
+    c1.metric(_("Days to the election"), (cfg.election_date - date.today()).days)
+    c2.metric(_("Election date"), cfg.election_date.strftime(_("%Y-%m-%d")))
+    for comp in comparisons:
+        st.subheader(market_label(cfg, comp.market))
+        rows = [{
+            _("Outcome"): outcome_label(cfg, o.outcome),
+            _("Probability ({source})", source=source): o.p_model,
+            _("Best odds"): o.best_odds,
+            _("Bookmaker"): o.best_bookmaker,
+        } for o in sorted(comp.outcomes, key=lambda o: -o.p_model) if o.in_model][:20]
+        st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch", column_config={
+            _("Probability ({source})", source=source): st.column_config.ProgressColumn(
+                format="percent", min_value=0.0, max_value=1.0),
+            _("Best odds"): ODDS,
+        })
+
+
 def _poll_chart(cfg, sim) -> None:
     ctx = context()
     with ctx.session() as session:
@@ -190,7 +224,9 @@ def _market_picker(cfg, candidates: list[str], key: str) -> MarketSpec | None:
 
 def signals_page() -> None:
     from polledge.journal.paper import record_signals, record_snapshot
-    from polledge.services import build_comparisons, fetch_odds, market_fair_probs, params_payload
+    from polledge.services import (
+        build_comparisons, build_market_comparisons, fetch_odds, market_fair_probs, params_payload,
+    )
 
     ctx = context()
     cfg = current_election()
@@ -223,12 +259,19 @@ def signals_page() -> None:
         else:
             st.info(_("There are no odds for this election yet. Enter them on the Odds page."))
         return
-    try:
-        sim, _probs = model(cfg)
-    except PollEdgeError as exc:
-        _error(exc)
-        return
-    comparisons = build_comparisons(sim, quotes, ctx.settings)
+    if cfg.uses_polls:
+        try:
+            sim, _probs = model(cfg)
+        except PollEdgeError as exc:
+            _error(exc)
+            return
+        comparisons = build_comparisons(sim, quotes, ctx.settings)
+        as_of = sim.average.as_of
+    else:
+        st.info(_("This election has no poll model: the probabilities come from {source}. A signal means a "
+                  "bookmaker pays more than the {source} price implies.", source=cfg.reference_market.capitalize()))
+        comparisons = build_market_comparisons(cfg, quotes, ctx.settings)
+        as_of = date.today()
     sig = ctx.settings.signals
 
     n_signals = sum(len(c.signals) for c in comparisons)
@@ -286,7 +329,7 @@ def signals_page() -> None:
         with ctx.session() as session:
             created = record_signals(session, cfg.id, comparisons)
             probs = {c.market: {o.outcome: o.p_model for o in c.outcomes if o.in_model} for c in comparisons}
-            record_snapshot(session, cfg.id, probs, params_payload(model_params_for(ctx.settings, cfg), sim.average.as_of),
+            record_snapshot(session, cfg.id, probs, params_payload(model_params_for(ctx.settings, cfg), as_of),
                             market_fair_probs(comparisons))
         st.success(_("Saved {count} new virtual bets to the journal.", count=len(created)))
     analysis_only()

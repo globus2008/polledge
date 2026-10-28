@@ -107,7 +107,12 @@ def import_legacy_calibration(session: Session, settings: Settings) -> dict | No
 
 
 def update_polls(session: Session, client: WikiClient, election: ElectionConfig, force: bool = False) -> tuple[int, int, int]:
-    """Download, parse and store polls. Returns (parsed, inserted, updated)."""
+    """Download, parse and store polls. Returns (parsed, inserted, updated).
+
+    Elections in "market" mode have no polls: (0, 0, 0).
+    """
+    if not election.uses_polls:
+        return 0, 0, 0
     html = client.get_page_html(election.wiki_page, force=force)
     polls = parse_election_html(html, election)
     inserted, updated = upsert_polls(session, polls)
@@ -211,6 +216,38 @@ def build_comparisons(sim: SimulationResult, quotes: list[OddsQuote], settings: 
     model_probs = probabilities_for(sim, [parse_market(m) for m in markets])
     books = latest_books(quotes, model_probs, settings.signals.reference_bookmakers)
     return [compare_market(m, model_probs[m], books, settings.signals) for m in markets if m in model_probs]
+
+
+def reference_probabilities(quotes: list[OddsQuote], settings: Settings, source: str) -> dict[str, dict[str, float]]:
+    """{market: {outcome: p}} from the latest prices of the reference market (e.g. Polymarket)."""
+    books = latest_books([q for q in quotes if q.bookmaker.lower() == source.lower()], None,
+                         settings.signals.reference_bookmakers)
+    return {b.market: b.fair for b in books if b.fair}
+
+
+def build_market_comparisons(election: ElectionConfig, quotes: list[OddsQuote], settings: Settings) -> list[MarketComparison]:
+    """Comparisons for an election without a poll model: the reference market plays the model."""
+    model_probs = reference_probabilities(quotes, settings, election.reference_market)
+    books = latest_books(quotes, model_probs, settings.signals.reference_bookmakers)
+    return [compare_market(m, probs, books, settings.signals) for m, probs in sorted(model_probs.items())]
+
+
+@dataclass
+class ElectionComparison:
+    comparisons: list[MarketComparison]
+    sim: SimulationResult | None  # None in "market" mode
+    params: ModelParams
+    as_of: date
+
+
+def compare_election(session: Session, settings: Settings, election: ElectionConfig, quotes: list[OddsQuote],
+                     n_sims: int | None = None) -> ElectionComparison:
+    """Model (or reference market) vs. stored odds - the single entry point for CLI, watch and web."""
+    params = model_params_for(settings, election)
+    if not election.uses_polls:
+        return ElectionComparison(build_market_comparisons(election, quotes, settings), None, params, date.today())
+    sim, params = run_model_from_db(session, settings, election, None, n_sims)
+    return ElectionComparison(build_comparisons(sim, quotes, settings), sim, params, sim.average.as_of)
 
 
 def market_fair_probs(comparisons: list[MarketComparison]) -> dict[str, dict[str, float]]:

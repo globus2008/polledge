@@ -166,6 +166,7 @@ def update_polls_cmd(
     configured = discover_elections(s, include_history=True)
     current = discover_elections(s, include_history=False)
     ids = election or (sorted(configured) if history else sorted(current))
+    ids = [i for i in ids if i not in configured or configured[i].uses_polls]  # market-only elections have no polls
     if not ids:
         raise PollEdgeError(_("No elections are configured (config/elections/*.yaml)"))
     client = state().wiki_client()
@@ -204,6 +205,10 @@ def model_cmd(
 
     s = state().settings
     cfg = get_election(s, election)
+    if not cfg.uses_polls:
+        raise PollEdgeError(_("{election} has no poll model - its probabilities come from {source}. "
+                              "Use `polledge signals -e {id}`.", election=cfg.name,
+                              source=cfg.reference_market.capitalize(), id=cfg.id))
     with state().session() as session:
         sim, params = run_model_from_db(session, s, cfg, as_of.date() if as_of else None, runs)
         specs = model_markets(sim, cfg, market)
@@ -401,9 +406,7 @@ def _watch_once(election: list[str] | None, no_polls: bool) -> None:
     from polledge.journal.paper import record_signals, record_snapshot
     from polledge.notify.base import Signal
     from polledge.notify.channels import build_notifiers
-    from polledge.services import (
-        build_comparisons, fetch_odds, market_fair_probs, params_payload, run_model_from_db, update_polls,
-    )
+    from polledge.services import compare_election, fetch_odds, market_fair_probs, params_payload, update_polls
 
     s = state().settings
     notifiers = build_notifiers(s.notify, console)
@@ -412,7 +415,7 @@ def _watch_once(election: list[str] | None, no_polls: bool) -> None:
     try:
         for cfg in _elections_with_bookmakers(election):
             with state().session() as session:
-                if not no_polls:
+                if not no_polls and cfg.uses_polls:
                     try:
                         parsed, inserted, _updated = update_polls(session, wiki, cfg)
                         ok(_("{election}: {parsed} polls, {inserted} new", election=cfg.name, parsed=parsed, inserted=inserted))
@@ -423,11 +426,11 @@ def _watch_once(election: list[str] | None, no_polls: bool) -> None:
                 quotes = load_quotes(session, cfg.id)
                 if not quotes:
                     continue
-                sim, params = run_model_from_db(session, s, cfg)
-                comparisons = build_comparisons(sim, quotes, s)
+                result = compare_election(session, s, cfg, quotes)
+                comparisons = result.comparisons
                 created = record_signals(session, cfg.id, comparisons)
                 probs = {c.market: {o.outcome: o.p_model for o in c.outcomes if o.in_model} for c in comparisons}
-                record_snapshot(session, cfg.id, probs, params_payload(params, sim.average.as_of),
+                record_snapshot(session, cfg.id, probs, params_payload(result.params, result.as_of),
                                 market_fair_probs(comparisons))
                 for c in comparisons:
                     if c.is_arbitrage:
@@ -465,7 +468,7 @@ def signals_cmd(
     only_signals: Annotated[bool, typer.Option("--only-signals", help=_("Show only rows with a signal"))] = False,
 ) -> None:
     from polledge.journal.paper import record_signals, record_snapshot
-    from polledge.services import build_comparisons, market_fair_probs, params_payload, run_model_from_db
+    from polledge.services import compare_election, market_fair_probs, params_payload
 
     s = state().settings
     cfg = get_election(s, election)
@@ -474,15 +477,15 @@ def signals_cmd(
         if not quotes:
             raise PollEdgeError(_("There are no odds for election {id} in the database. Use `import-odds` or "
                                   "`fetch-odds`.", id=cfg.id))
-        sim, params = run_model_from_db(session, s, cfg, None, runs)
-        comparisons = build_comparisons(sim, quotes, s)
+        result = compare_election(session, s, cfg, quotes, runs)
+        comparisons, params = result.comparisons, result.params
 
         sig = s.signals
         subtitle = _("Edge threshold {threshold} · Kelly {kelly} · bankroll {bankroll}",
                      threshold=pct(sig.edge_threshold), kelly=num(sig.kelly_fraction, 2), bankroll=money(sig.bankroll))
-        console.print(Panel.fit(
-            f"[bold]{cfg.name}[/bold] – " + _("model as of {date}", date=fmt_date(sim.average.as_of)) + f"\n{subtitle}"
-        ))
+        source = (_("model as of {date}", date=fmt_date(result.as_of)) if cfg.uses_polls
+                  else _("probabilities from {source}", source=cfg.reference_market.capitalize()))
+        console.print(Panel.fit(f"[bold]{cfg.name}[/bold] – {source}\n{subtitle}"))
         columns = (_("Outcome"), _("Model"), _("Market (no margin)"), _("Best odds"), _("Bookmaker"),
                    _("Edge"), _("Stake"), "")
         left = {_("Outcome"), _("Bookmaker"), ""}
@@ -519,7 +522,7 @@ def signals_cmd(
         if record:
             created = record_signals(session, cfg.id, comparisons)
             probs = {c.market: {o.outcome: o.p_model for o in c.outcomes if o.in_model} for c in comparisons}
-            record_snapshot(session, cfg.id, probs, params_payload(params, sim.average.as_of), market_fair_probs(comparisons))
+            record_snapshot(session, cfg.id, probs, params_payload(params, result.as_of), market_fair_probs(comparisons))
             console.print("[green]" + _("Saved {count} new virtual bets to the journal.", count=len(created)) + "[/green]")
         analysis_only()
 

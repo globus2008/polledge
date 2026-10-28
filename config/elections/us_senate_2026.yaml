@@ -1,0 +1,17 @@
+# US Senate 2026 - who wins the majority. Overview of Polymarket prices only ("market" mode).
+id: us_senate_2026
+name: "USA – Senát 2026 (většina)"
+type: single_round
+election_date: 2026-11-03
+probability_source: market
+reference_market: polymarket
+
+candidates:
+  DEM: {name: "Demokraté", aliases: ["Democratic Party", "Democrats"]}
+  REP: {name: "Republikáni", aliases: ["Republican Party", "Republicans"]}
+
+bookmakers:
+  polymarket:
+    pages: ["which-party-will-win-the-senate-in-2026"]
+    markets:
+      "which-party-will-win-the-senate-in-2026": winner

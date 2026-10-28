@@ -1,0 +1,18 @@
+# US House of Representatives 2026 - who wins the majority. No supported Czech bookmaker lists it,
+# so it is an overview of Polymarket prices only ("market" mode, no signals without bookmaker odds).
+id: us_house_2026
+name: "USA – Sněmovna reprezentantů 2026 (většina)"
+type: single_round
+election_date: 2026-11-03
+probability_source: market
+reference_market: polymarket
+
+candidates:
+  DEM: {name: "Demokraté", aliases: ["Democratic Party", "Democrats"]}
+  REP: {name: "Republikáni", aliases: ["Republican Party", "Republicans"]}
+
+bookmakers:
+  polymarket:
+    pages: ["which-party-will-win-the-house-in-2026"]
+    markets:
+      "which-party-will-win-the-house-in-2026": winner

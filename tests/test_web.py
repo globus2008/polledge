@@ -1,5 +1,6 @@
 """Smoke tests of the Streamlit pages on a temporary database (no network)."""
 
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -7,6 +8,7 @@ from streamlit.testing.v1 import AppTest
 
 from polledge.config import load_election
 from polledge.db import make_session_factory
+from polledge.odds.base import OddsQuote
 from polledge.odds.file_source import CsvOddsSource
 from polledge.odds.repository import store_quotes
 from polledge.polls.parser import parse_election_html
@@ -14,6 +16,7 @@ from polledge.polls.repository import upsert_polls
 
 ROOT = Path(__file__).resolve().parents[1]
 PAGES = ["model_page", "signals_page", "odds_page", "journal_page", "calibration_page"]
+MARKET_PAGES = ["model_page", "signals_page", "odds_page", "journal_page"]
 
 
 @pytest.fixture(scope="module")
@@ -25,23 +28,48 @@ def database(tmp_path_factory):
     with sessions() as session:
         upsert_polls(session, parse_election_html(html, election))
         store_quotes(session, CsvOddsSource(ROOT / "data" / "odds" / "fr_pres_2027_sample.csv").fetch(), "csv")
+        t = datetime(2026, 10, 28, 9)
+        store_quotes(session, [
+            OddsQuote("us_pres_2028", "Polymarket", "winner", "VANCE", 1 / 0.18, t),
+            OddsQuote("us_pres_2028", "Polymarket", "winner", "HARRIS", 1 / 0.043, t),
+            OddsQuote("us_pres_2028", "Betano", "winner", "VANCE", 5.0, t),
+            OddsQuote("us_pres_2028", "Betano", "winner", "HARRIS", 25.0, t),
+        ], "test")
     return url
 
 
-def _run_page(page: str) -> None:
+def _run_page(page: str, election: str = "fr_pres_2027") -> None:
     import streamlit as st
 
     from polledge.web import views
     from polledge.web.state import context
 
-    context()
-    st.session_state["election_id"] = "fr_pres_2027"
+    import os
+
+    # Guard: the page must use the temporary test database, never a database from secrets.toml.
+    assert context().settings.db_url() == os.environ["POLLEDGE_TEST_DB"], "test is not using the test database"
+    st.session_state["election_id"] = election
     getattr(views, page)()
+
+
+@pytest.mark.parametrize("page", MARKET_PAGES)
+def test_market_mode_pages_render(page, database, monkeypatch):
+    monkeypatch.setenv("POLLEDGE_DATABASE_URL", database)
+    monkeypatch.setenv("POLLEDGE_TEST_DB", database)
+    from polledge.web.state import reload_context
+
+    reload_context()
+    at = AppTest.from_function(_run_page, args=(page, "us_pres_2028"), default_timeout=120)
+    at.run()
+    assert not at.exception, [e.value for e in at.exception]
+    if page in ("model_page", "signals_page"):
+        assert at.dataframe  # reference probabilities / comparison table
 
 
 @pytest.mark.parametrize("page", PAGES)
 def test_page_renders(page, database, monkeypatch):
     monkeypatch.setenv("POLLEDGE_DATABASE_URL", database)
+    monkeypatch.setenv("POLLEDGE_TEST_DB", database)
     monkeypatch.delenv("APP_PASSWORD", raising=False)
     from polledge.web.state import reload_context
 
@@ -54,6 +82,7 @@ def test_page_renders(page, database, monkeypatch):
 
 def test_signals_page_shows_signals(database, monkeypatch):
     monkeypatch.setenv("POLLEDGE_DATABASE_URL", database)
+    monkeypatch.setenv("POLLEDGE_TEST_DB", database)
     from polledge.web.state import reload_context
 
     reload_context()
@@ -66,6 +95,7 @@ def test_signals_page_shows_signals(database, monkeypatch):
 def test_environment_overrides_secrets_file(database, monkeypatch):
     # A developer's .streamlit/secrets.toml must never redirect tests to the production database.
     monkeypatch.setenv("POLLEDGE_DATABASE_URL", database)
+    monkeypatch.setenv("POLLEDGE_TEST_DB", database)
     from polledge.web.state import secret
 
     assert secret("POLLEDGE_DATABASE_URL") == database
