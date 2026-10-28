@@ -783,8 +783,10 @@ def _stored_odds(ctx, cfg) -> None:
         st.info(_("No odds match the filter."))
         return
     selection = st.dataframe(df, hide_index=True, width="stretch", on_select="rerun",
-                             selection_mode="multi-row", column_config={"id": None, _("Odds"): ODDS}, key="odds_table")
-    selected = [int(df.iloc[i]["id"]) for i in selection.selection.rows]
+                             selection_mode="multi-row", column_config={"id": None, _("Odds"): ODDS},
+                             # A new key after each delete drops the old selection (row numbers of the longer table).
+                             key=f"odds_table_{st.session_state.get('odds_table_version', 0)}")
+    selected = [int(df.iloc[i]["id"]) for i in selection.selection.rows if i < len(df)]
     c1, c2 = st.columns(2)
     delete_selected = c1.button(_("Delete selected odds ({count})", count=len(selected)), disabled=not selected,
                                 width="stretch")
@@ -795,6 +797,7 @@ def _stored_odds(ctx, cfg) -> None:
         with ctx.session() as session:
             n = delete_quotes(session, selected if delete_selected else [r.id for r in shown])
         st.session_state["odds_deleted"] = _("Deleted {count} odds.", count=n)
+        st.session_state["odds_table_version"] = st.session_state.get("odds_table_version", 0) + 1
         st.rerun()
 
 
