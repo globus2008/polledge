@@ -113,3 +113,20 @@ def test_login_required_for_hosted_database(monkeypatch, database):
 
     monkeypatch.delenv("APP_PASSWORD", raising=False)
     assert not state.is_local_sqlite(Ctx())
+
+
+def test_context_rebuilt_after_code_reload(database, monkeypatch):
+    # Streamlit keeps cached resources across a redeploy; a context built by the old code must be replaced.
+    monkeypatch.setenv("POLLEDGE_DATABASE_URL", database)
+    from polledge.config import Settings
+    from polledge.web import state
+
+    state.reload_context()
+    first = state.context()
+    assert state.context() is first  # normally cached
+
+    class ReloadedSettings(Settings):  # stands for the class object after a module reload
+        pass
+
+    monkeypatch.setattr(state, "Settings", ReloadedSettings)
+    assert state.context() is not first

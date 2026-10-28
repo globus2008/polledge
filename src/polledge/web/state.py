@@ -12,7 +12,7 @@ import streamlit as st
 from sqlalchemy import func, select
 
 from polledge import i18n
-from polledge.config import ElectionConfig, discover_elections, get_election, model_params_for
+from polledge.config import ElectionConfig, Settings, discover_elections, get_election, model_params_for
 from polledge.db import PollRow
 from polledge.i18n import _
 from polledge.logging_setup import setup_logging
@@ -58,6 +58,11 @@ def _secrets_file_value(name: str) -> str | None:
 
 def context() -> AppContext:
     ctx = _context()
+    # After a deploy Streamlit reloads the modules but keeps cached resources: the cached context
+    # would then hold Settings of the old class (missing new fields). Rebuild it in that case.
+    if type(ctx.settings) is not Settings or type(ctx) is not AppContext:
+        reload_context()
+        ctx = _context()
     i18n.set_language(ctx.settings.language)
     return ctx
 
