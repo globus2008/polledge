@@ -193,6 +193,8 @@ fr_pres_2027,Tipsport,winner,LE_PEN,1.45,2026-10-27 10:00
 fr_pres_2027,Fortuna,qualify_runoff:PHILIPPE,yes,2.05,2026-10-27 09:30
 ```
 
+Typy trhů: `winner`, `first_round_winner`, `finalists`, `qualify_runoff:<ID>` (ano/ne), `threshold:<ID>:<%>` (ano/ne), `share_over:<ID>:<%>` (over/under), `outcome:<ID>` (ano/ne, „vyhraje X?“), `seats_over:<ID>:<mandáty>` (over/under, jen s referenčním trhem). Při vkládání textu se hranice mandátů píše jako `+47.5` (více) a `-47.5` (méně), jak je uvádí Fortuna.
+
 YAML lze psát po jednotlivých záznamech, nebo seskupeně:
 
 ```yaml
@@ -260,7 +262,8 @@ Nový scraper je třída `OddsSource` zaregistrovaná v `src/polledge/odds/scrap
 
 Nakonfigurované americké volby:
 - `us_pres_2028`: prezidentské volby 2028, Betano vs. Polymarket.
-- `us_house_2026` a `us_senate_2026`: většina ve Sněmovně a v Senátu 2026. Jen přehled cen z Polymarketu, protože žádná podporovaná kancelář je nevypisuje.
+- `us_house_2026` a `us_senate_2026`: většina ve Sněmovně a v Senátu 2026 a počty mandátů. Z Polymarketu se stahují i pásma mandátů (`seats:REP`, `seats:REP:low`) a z nich se počítají sázky více/méně mandátů (`seats_over:<strana>:<hranice>`). Uvnitř pásma (např. 205–209) se pravděpodobnost dělí rovnoměrně, a kde rozhodne jemnější sada pásem, použije se ta. Demokratické mandáty ve Sněmovně jsou 435 − republikánské (`seat_complements`). Kurzy kanceláří (Fortuna) se zadávají ručně.
+- `us_congress_2026`: rozdělení obou komor (čtyři kombinace) podle Polymarketu *Balance of Power*. Kanceláře je vypisují jako ano/ne sázky na jednotlivou kombinaci (`outcome:<ID>`), pravděpodobnost se bere z trhu vítěze.
 
 **Volby s živými kurzy:** **FR 2027** má automaticky ceny z Polymarketu (reference) a Betano se pro ni hlídá podle klíčových slov. Signály se objeví, jakmile ji Betano vypíše nebo zadáte kurzy české kanceláře ručně. Betano i Fortuna nabízejí **české prezidentské volby 2028** (`cz_pres_2028`), které se stahují z Betana. Pozor, průzkumy k nim jsou slabé:
 

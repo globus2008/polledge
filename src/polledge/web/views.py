@@ -15,7 +15,9 @@ from polledge.config import OTHER, ElectionResult, model_params_for
 from polledge.db import PaperBetRow
 from polledge.errors import PollEdgeError
 from polledge.i18n import _
-from polledge.model.markets import BINARY_OUTCOMES, MARKET_TYPES, MarketSpec, market_probabilities, parse_market
+from polledge.model.markets import (
+    BINARY_OUTCOMES, MARKET_TYPES, REFERENCE_ONLY, MarketSpec, market_probabilities, parse_market,
+)
 from polledge.odds.base import OddsQuote
 from polledge.odds.file_source import quote_from_record, source_for_path
 from polledge.odds.margin import latest_books
@@ -221,7 +223,8 @@ def _custom_market(cfg, sim) -> None:
                      width="stretch", column_config={_("Probability"): PCT})
 
 
-MARKET_ORDER = ["winner", "first_round_winner", "qualify_runoff", "finalists", "threshold", "share_over"]
+MARKET_ORDER = ["winner", "outcome", "first_round_winner", "qualify_runoff", "finalists", "threshold", "share_over",
+                "seats_over"]
 
 
 def _market_picker(cfg, candidates: list[str], key: str) -> MarketSpec | None:
@@ -229,18 +232,23 @@ def _market_picker(cfg, candidates: list[str], key: str) -> MarketSpec | None:
     kinds = [k for k in MARKET_ORDER if k in MARKET_TYPES]
     if cfg.type != "two_round":
         kinds = [k for k in kinds if k not in ("finalists", "qualify_runoff", "first_round_winner")]
+    if cfg.uses_polls:
+        kinds = [k for k in kinds if k not in REFERENCE_ONLY]
     names = {cid: cfg.candidate_name(cid) for cid in candidates if cid != OTHER}
     c1, c2, c3 = st.columns(3)
     kind = c1.selectbox(_("Market type"), kinds, key=f"{key}_kind",
                         format_func=lambda k: MarketSpec(k, "X", 5.0).describe({"X": "…"}))
     candidate = value = None
-    if kind in ("qualify_runoff", "threshold", "share_over"):
+    if kind in ("qualify_runoff", "threshold", "share_over", "outcome", "seats_over"):
         if not names:
             return None
         candidate = c2.selectbox(_("Candidate / party"), list(names), format_func=names.get, key=f"{key}_cand")
     if kind in ("threshold", "share_over"):
         value = c3.number_input(_("Share (%)"), min_value=0.5, max_value=99.5, value=5.0 if kind == "threshold" else 30.0,
                                 step=0.5, key=f"{key}_value")
+    if kind == "seats_over":
+        value = c3.number_input(_("Seats (line, e.g. 47.5)"), min_value=0.5, max_value=999.5, value=47.5, step=1.0,
+                                key=f"{key}_seats")
     return MarketSpec(kind, candidate, value)
 
 
@@ -517,7 +525,9 @@ def match_candidate(cfg, name: str) -> str | None:
 
 
 def _paste_odds(ctx, cfg) -> None:
-    from polledge.odds.paste import parse_pasted_odds
+    from polledge.odds.paste import parse_pasted_odds, signed_line
+    from polledge.odds.scrapers.mapping import BINARY_NAMES
+    from polledge.polls.cleaning import normalize_name
 
     st.caption(_("Open the market on the bookmaker's website, press Ctrl+A and Ctrl+C, then paste it here with "
                  "Ctrl+V. PollEdge finds the names and odds; check the preview and save."))
@@ -545,7 +555,10 @@ def _paste_odds(ctx, cfg) -> None:
     for sel in selections:
         if binary:
             guess = next((o for o, label in labels.items() if label.lower() == sel.name.lower() or o == sel.name.lower()),
-                         None)
+                         None) or BINARY_NAMES.get(normalize_name(sel.name))
+            signed = signed_line(sel.name)
+            if signed is not None:  # "+47.5" / "-47.5": only the line of the chosen market
+                guess = signed[0] if spec.value is not None and abs(signed[1] - spec.value) < 1e-9 else None
             choice = labels.get(guess, skip)
         else:
             guess = match_candidate(cfg, sel.name)

@@ -1,0 +1,28 @@
+# US Congress 2026 - which party controls which chamber (four combinations). Prices from Polymarket's
+# "Balance of Power" ("market" mode). Bookmakers list each combination as a yes/no bet (outcome:<ID>).
+id: us_congress_2026
+name: "USA – Kongres 2026 (rozdělení komor)"
+type: single_round
+election_date: 2026-11-03
+probability_source: market
+reference_market: polymarket
+
+candidates:
+  DEM_SWEEP:
+    name: "Demokraté v Senátu i ve Sněmovně"
+    aliases: ["Democrats Sweep", "Demokraté většina v Senátu i ve Sněmovně reprezentantů"]
+  R_SENATE_D_HOUSE:
+    name: "Republikáni v Senátu, Demokraté ve Sněmovně"
+    aliases: ["R Senate, D House", "Republikáni většina v Senátu, Demokraté ve Sněmovně reprezentantů"]
+  REP_SWEEP:
+    name: "Republikáni v Senátu i ve Sněmovně"
+    aliases: ["Republicans Sweep", "Republikáni většina v Senátu i ve Sněmovně reprezentantů"]
+  D_SENATE_R_HOUSE:
+    name: "Demokraté v Senátu, Republikáni ve Sněmovně"
+    aliases: ["D Senate, R House", "Demokraté většina v Senátu, Republikáni ve Sněmovně reprezentantů"]
+
+bookmakers:
+  polymarket:
+    pages: ["balance-of-power-2026-midterms"]
+    markets:
+      "balance-of-power-2026-midterms": winner

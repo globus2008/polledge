@@ -1,7 +1,7 @@
-# US House of Representatives 2026 - who wins the majority. No supported Czech bookmaker lists it,
-# so it is an overview of Polymarket prices only ("market" mode, no signals without bookmaker odds).
+# US House of Representatives 2026 - majority and seats. Prices from Polymarket ("market" mode); Czech
+# bookmaker odds (e.g. Fortuna: Democratic seats over/under 229.5) are entered by hand and compared with them.
 id: us_house_2026
-name: "USA – Sněmovna reprezentantů 2026 (většina)"
+name: "USA – Sněmovna reprezentantů 2026"
 type: single_round
 election_date: 2026-11-03
 probability_source: market
@@ -11,8 +11,17 @@ candidates:
   DEM: {name: "Demokraté", aliases: ["Democratic Party", "Democrats"]}
   REP: {name: "Republikáni", aliases: ["Republican Party", "Republicans"]}
 
+# Polymarket lists Republican seat brackets; Democratic seats = 435 - Republican (no independents expected).
+seat_complements:
+  DEM: {of: REP, total: 435}
+
 bookmakers:
   polymarket:
-    pages: ["which-party-will-win-the-house-in-2026"]
+    pages:
+      - "which-party-will-win-the-house-in-2026"
+      - "republican-house-seats-after-the-2026-midterm-elections"
+      - "republican-house-seats-after-the-2026-midterm-elections-lower-brackets"
     markets:
       "which-party-will-win-the-house-in-2026": winner
+      "republican-house-seats-after-the-2026-midterm-elections": "seats:REP"
+      "republican-house-seats-after-the-2026-midterm-elections-lower-brackets": "seats:REP:low"

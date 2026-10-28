@@ -25,15 +25,25 @@ _SKIP_WORDS = {
     "live", "politika", "cash out", "bet", "odds", "winner", "show more", "vsechny", "trh", "trhy",
     "kandidat", "kandidat kurz", "jmeno", "jmeno kurz", "candidate", "candidate odds", "name odds",
 }
-_MARKUP = re.compile(r"^[#>*\-\s]+|[*_`]+")
+_MARKUP = re.compile(r"^(?:[#>]+\s*|[-*+]\s+)+|[*_`]+")
+# Over/under lines are written as signed numbers: "+47.5" (over) and "-47.5" (under).
+_SIGNED = re.compile(r"^[+-]\d{1,4}(?:[.,]\d{1,2})?$")
+_SIGNED_THEN_ODDS = re.compile(rf"^\s*([+-]\d{{1,4}}(?:[.,]\d{{1,2}})?)\s+{_ODDS}\s*$")
 
 
-def _clean_line(raw: str) -> str:
-    """Plain text of a line: table cells joined by spaces, Markdown headings, bullets and emphasis removed."""
-    line = raw.strip()
-    if "|" in line or "\t" in line:
-        line = " ".join(cell.strip() for cell in re.split(r"[|\t]", line) if cell.strip())
-    return _MARKUP.sub("", line).strip()
+def _clean_lines(raw: str) -> list[str]:
+    """Plain text of a line; a table row ("| Ano | 1.36 | Ne | 2.76 |" or tab-separated) gives one line per
+    cell, so it reads like the stacked layout. Markdown headings, bullets and emphasis are removed."""
+    cells = re.split(r"[|\t]", raw) if "|" in raw or "\t" in raw else [raw]
+    return [text for text in (_MARKUP.sub("", c.strip()).strip() for c in cells) if text]
+
+
+def signed_line(name: str) -> tuple[str, float] | None:
+    """("over" | "under", line) for a selection named "+47.5" / "-47.5"."""
+    text = name.strip()
+    if not _SIGNED.match(text):
+        return None
+    return ("over" if text[0] == "+" else "under"), float(text[1:].replace(",", "."))
 
 
 @dataclass
@@ -54,6 +64,8 @@ def _to_odds(text: str) -> float | None:
 
 def _is_name(line: str) -> bool:
     text = line.strip()
+    if _SIGNED.match(text):
+        return True
     if len(text) < 2 or len(text) > 80 or _NOISE.match(text):
         return False
     return normalize_name(text) not in _SKIP_WORDS
@@ -63,11 +75,8 @@ def parse_pasted_odds(text: str) -> list[PastedSelection]:
     """Selections in page order; the first occurrence of a name wins (pages often repeat favourites)."""
     found: dict[str, PastedSelection] = {}
     last_name: str | None = None
-    for raw in text.splitlines():
-        line = _clean_line(raw)
-        if not line:
-            continue
-        same_line = _NAME_THEN_ODDS.match(line)
+    for line in (cell for raw in text.splitlines() for cell in _clean_lines(raw)):
+        same_line = _SIGNED_THEN_ODDS.match(line) or _NAME_THEN_ODDS.match(line)
         if same_line and _is_name(same_line.group(1)) and _to_odds(same_line.group(2)):
             name, odds = same_line.group(1).strip(), _to_odds(same_line.group(2))
         elif _ODDS_ONLY.match(line) and last_name is not None and _to_odds(line):

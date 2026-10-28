@@ -84,6 +84,11 @@ def record_snapshot(
 def winning_outcomes(market: str, result: ElectionResult) -> set[str] | None:
     """Outcomes that won, or None if the result does not decide the market (bet is void)."""
     spec = parse_market(market)
+    if spec.kind == "seats_over":
+        seats = result.seats.get(spec.candidate)
+        return None if seats is None else {"over" if seats > spec.value else "under"}
+    if spec.kind == "seats":
+        return None
     first = result.first_round
     if not first:
         return None
@@ -99,6 +104,9 @@ def winning_outcomes(market: str, result: ElectionResult) -> set[str] | None:
     if spec.kind == "finalists":
         return {"|".join(sorted(finalists))}
     yes, no = BINARY_OUTCOMES[spec.kind]
+    if spec.kind == "outcome":
+        winner = max(result.runoff, key=result.runoff.get) if result.runoff else ranking[0]
+        return {yes if winner == spec.candidate else no}
     if spec.kind == "qualify_runoff":
         return {yes if spec.candidate in finalists else no}
     if spec.candidate not in first:

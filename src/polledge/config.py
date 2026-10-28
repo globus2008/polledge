@@ -223,6 +223,14 @@ class BookmakerConfig(BaseModel):
 class ElectionResult(BaseModel):
     first_round: dict[str, float] = {}
     runoff: dict[str, float] = {}
+    seats: dict[str, int] = {}  # seats won, for seats_over markets
+
+
+class SeatComplement(BaseModel):
+    """Seats of a party derived from another party's seat distribution: total - seats(of)."""
+
+    of: str
+    total: int
 
 
 class ElectionConfig(BaseModel):
@@ -245,6 +253,8 @@ class ElectionConfig(BaseModel):
     # Polymarket event with "will X be on the ballot?" markets; its prices update candidacy probabilities.
     candidacy_market: str | None = None
     bookmakers: dict[str, BookmakerConfig] = {}
+    # e.g. {DEM: {of: REP, total: 435}}: bookmakers quote Democratic House seats, Polymarket lists Republican ones.
+    seat_complements: dict[str, SeatComplement] = {}
     result: ElectionResult | None = None
 
     @property

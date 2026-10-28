@@ -289,7 +289,15 @@ def reference_probabilities(quotes: list[OddsQuote], settings: Settings, source:
 
 def build_market_comparisons(election: ElectionConfig, quotes: list[OddsQuote], settings: Settings) -> list[MarketComparison]:
     """Comparisons for an election without a poll model: the reference market plays the model."""
-    model_probs = reference_probabilities(quotes, settings, election.reference_market)
+    from polledge.model.derived import derive_market
+
+    reference = reference_probabilities(quotes, settings, election.reference_market)
+    model_probs = dict(reference)
+    # Bookmaker markets the reference lists differently (yes/no on one outcome, seats over/under).
+    for market in sorted({q.market for q in quotes} - set(reference)):
+        derived = derive_market(market, reference, election)
+        if derived is not None:
+            model_probs[market] = derived
     books = latest_books(quotes, model_probs, settings.signals.reference_bookmakers)
     return [compare_market(m, probs, books, settings.signals) for m, probs in sorted(model_probs.items())]
 

@@ -7,6 +7,10 @@ Market identifiers (used in odds files too):
     qualify_runoff:<ID>        outcome = yes | no
     threshold:<ID>:<pct>       outcome = yes | no   (share >= pct)
     share_over:<ID>:<pct>      outcome = over | under (share > pct)
+    outcome:<ID>               outcome = yes | no   (<ID> wins the "winner" market, e.g. "Democrats sweep")
+    seats:<ID>[:<tag>]         outcome = seat bracket as listed ("≤47", "48", "190-194", "230+");
+                               a reference-market distribution only, the input for seats_over
+    seats_over:<ID>:<n>        outcome = over | under (seats > n)
 """
 
 from __future__ import annotations
@@ -22,8 +26,12 @@ BINARY_OUTCOMES = {
     "qualify_runoff": ("yes", "no"),
     "threshold": ("yes", "no"),
     "share_over": ("over", "under"),
+    "outcome": ("yes", "no"),
+    "seats_over": ("over", "under"),
 }
-MARKET_TYPES = {"winner", "first_round_winner", "finalists", *BINARY_OUTCOMES}
+MARKET_TYPES = {"winner", "first_round_winner", "finalists", "seats", *BINARY_OUTCOMES}
+# Only a reference market (e.g. Polymarket brackets) provides these; the poll model does not.
+REFERENCE_ONLY = {"seats", "seats_over"}
 
 
 @dataclass(frozen=True)
@@ -31,6 +39,7 @@ class MarketSpec:
     kind: str
     candidate: str | None = None
     value: float | None = None
+    tag: str | None = None  # seats:<ID>:<tag> - several bracket sets of one party (e.g. "low")
 
     @property
     def id(self) -> str:
@@ -39,6 +48,8 @@ class MarketSpec:
             parts.append(self.candidate)
         if self.value is not None:
             parts.append(f"{self.value:g}")
+        if self.tag is not None:
+            parts.append(self.tag)
         return ":".join(parts)
 
     def describe(self, names: dict[str, str] | None = None) -> str:
@@ -52,9 +63,15 @@ class MarketSpec:
             return _("Runoff pair")
         if self.kind == "qualify_runoff":
             return _("{candidate}: qualifies for the runoff", candidate=cand)
+        if self.kind == "outcome":
+            return _("{candidate}: yes/no", candidate=cand)
+        if self.kind == "seats":
+            return _("{candidate}: number of seats", candidate=cand) + (f" ({self.tag})" if self.tag else "")
         value = decimal(f"{self.value:g}")
         if self.kind == "threshold":
             return _("{candidate}: at least {value} %", candidate=cand, value=value)
+        if self.kind == "seats_over":
+            return _("{candidate}: seats over/under {value}", candidate=cand, value=value)
         return _("{candidate}: share over/under {value} %", candidate=cand, value=value)
 
 
@@ -67,10 +84,14 @@ def parse_market(market: str) -> MarketSpec:
         if len(parts) != 1:
             raise ValueError(_("Market '{market}' takes no parameters", market=market))
         return MarketSpec(kind)
-    if kind == "qualify_runoff":
+    if kind in ("qualify_runoff", "outcome"):
         if len(parts) != 2:
-            raise ValueError(_("Market '{market}': expected qualify_runoff:<ID>", market=market))
+            raise ValueError(_("Market '{market}': expected {kind}:<ID>", market=market, kind=kind))
         return MarketSpec(kind, parts[1])
+    if kind == "seats":
+        if len(parts) not in (2, 3):
+            raise ValueError(_("Market '{market}': expected seats:<ID> or seats:<ID>:<tag>", market=market))
+        return MarketSpec(kind, parts[1], tag=parts[2] if len(parts) == 3 else None)
     if len(parts) != 3:
         raise ValueError(_("Market '{market}': expected {kind}:<ID>:<percent>", market=market, kind=kind))
     try:
@@ -81,6 +102,9 @@ def parse_market(market: str) -> MarketSpec:
 
 
 def market_probabilities(sim: SimulationResult, spec: MarketSpec) -> dict[str, float]:
+    if spec.kind in REFERENCE_ONLY:
+        raise ValueError(_("Market '{market}' needs a reference market, the poll model does not model seats",
+                           market=spec.id))
     k = len(sim.candidates)
     if spec.kind in ("winner", "first_round_winner"):
         if spec.kind == "first_round_winner" or sim.winner is None:
@@ -104,6 +128,9 @@ def market_probabilities(sim: SimulationResult, spec: MarketSpec) -> dict[str, f
         if sim.finalists is None:
             raise ValueError(_("Market '{market}' only exists in two-round elections", market="qualify_runoff"))
         p = float(np.mean((sim.finalists == i).any(axis=1)))
+    elif spec.kind == "outcome":
+        winner = sim.winner if sim.winner is not None else sim.ranking_shares().argmax(axis=1)
+        p = float(np.mean(winner == i))
     elif spec.kind == "threshold":
         p = float(np.mean(sim.shares[:, i] * 100 >= spec.value))
     else:

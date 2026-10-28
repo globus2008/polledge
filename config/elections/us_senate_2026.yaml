@@ -1,6 +1,7 @@
-# US Senate 2026 - who wins the majority. Overview of Polymarket prices only ("market" mode).
+# US Senate 2026 - majority and Republican seats. Prices from Polymarket ("market" mode); Czech bookmaker
+# odds (e.g. Fortuna: Republican seats over/under 47.5) are entered by hand and compared with them.
 id: us_senate_2026
-name: "USA – Senát 2026 (většina)"
+name: "USA – Senát 2026"
 type: single_round
 election_date: 2026-11-03
 probability_source: market
@@ -12,6 +13,12 @@ candidates:
 
 bookmakers:
   polymarket:
-    pages: ["which-party-will-win-the-senate-in-2026"]
+    pages:
+      - "which-party-will-win-the-senate-in-2026"
+      # Seat brackets; seats_over:REP:<line> quotes are derived from them (finer set used where it decides).
+      - "republican-senate-seats-after-the-2026-midterm-elections-927"
+      - "republican-senate-seats-after-the-midterms-low-brackets"
     markets:
       "which-party-will-win-the-senate-in-2026": winner
+      "republican-senate-seats-after-the-2026-midterm-elections-927": "seats:REP"
+      "republican-senate-seats-after-the-midterms-low-brackets": "seats:REP:low"
