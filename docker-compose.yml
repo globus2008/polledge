@@ -4,8 +4,11 @@
 services:
   polledge-watch:
     image: ghcr.io/globus2008/polledge:latest
+    pull_policy: always       # Build / restart always fetches the newest image
     container_name: polledge-watch
     restart: unless-stopped
+    init: true                # a minimal init passes the stop signal on, so Stop / Build do not hang
+    stop_grace_period: 20s
     environment:
       POLLEDGE_DATABASE_URL: ${POLLEDGE_DATABASE_URL:?set POLLEDGE_DATABASE_URL}
       TZ: Europe/Prague

@@ -391,6 +391,11 @@ def watch_cmd(
         return
     if every < 60:
         raise PollEdgeError(_("--every must be at least 60 seconds"))
+    # In a container this is PID 1, for which Linux ignores SIGTERM without a handler: "docker stop"
+    # (Synology: Stop / Build) would hang until the kill timeout. Exit cleanly instead.
+    import signal
+
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     while True:
         started = time.monotonic()
         console.rule(to_local(utcnow()).strftime(_("%Y-%m-%d %H:%M")))
