@@ -55,6 +55,7 @@ class TuneResult:
     loeo: dict[str, dict[str, float]]  # election -> {tuned, default, params}
     coverage80: float
     sigma_runoff_pp: float | None
+    runoff_bias_pp: dict[str, float] = field(default_factory=dict)  # by party, actual minus polls
     table: list[tuple[dict, float]] = field(default_factory=list)  # top combinations
 
 
@@ -126,13 +127,16 @@ def tune(
             "params": combo_of(k),
         }
 
+    best_params = _combo_params(base, combo_of(best_key))
+    runoff_bias = estimate_runoff_bias(elections, best_params, horizons)
     return TuneResult(
         best=combo_of(best_key),
         best_score=objective(best_key, all_ids),
         default_score=objective(default_key, all_ids) if default_key else float("nan"),
         loeo=loeo,
         coverage80=float(np.mean(coverage[best_key])),
-        sigma_runoff_pp=estimate_runoff_sigma(elections, _combo_params(base, combo_of(best_key)), horizons),
+        sigma_runoff_pp=estimate_runoff_sigma(elections, best_params, horizons, runoff_bias),
+        runoff_bias_pp=runoff_bias,
         table=[(combo_of(k), objective(k, all_ids)) for k in ranked[:10]],
     )
 
@@ -170,9 +174,9 @@ def _score_case(avg: PollAverage, actual: np.ndarray, days: int, params: ModelPa
     return 100 * float(crps), float(np.mean(interval_coverage(draws, actual)))
 
 
-def estimate_runoff_sigma(elections, params: ModelParams, horizons) -> float | None:
-    """RMS error of averaged head-to-head polls for the real finalists, minus sampling noise."""
-    errors, sampling = [], []
+def runoff_errors(elections, params: ModelParams, horizons) -> list[tuple[str, str, str, float, float]]:
+    """(election, candidate a, candidate b, actual - polls for a, sampling variance) per horizon."""
+    rows = []
     for election, polls in elections:
         res = election.result
         if res is None or len(res.runoff) != 2:
@@ -186,11 +190,35 @@ def estimate_runoff_sigma(elections, params: ModelParams, horizons) -> float | N
             if avg is None:
                 continue
             m = avg.as_dict()[pair[0]]
-            errors.append(actual_a - m)
-            sampling.append(m * (1 - m) / avg.n_eff)
-    if not errors:
+            rows.append((election.id, pair[0], pair[1], actual_a - m, m * (1 - m) / avg.n_eff))
+    return rows
+
+
+def estimate_runoff_bias(elections, params: ModelParams, horizons) -> dict[str, float]:
+    """Mean signed error of head-to-head polls by party (pp), from the parties' point of view.
+
+    Each election counts equally (not each horizon), so one election with many snapshots does not dominate.
+    """
+    parties = {e.id: {cid: c.party for cid, c in e.candidates.items() if c.party} for e, _p in elections}
+    per_election: dict[str, dict[str, list[float]]] = {}
+    for eid, a, b, err, _var in runoff_errors(elections, params, horizons):
+        for cand, sign in ((a, 1.0), (b, -1.0)):
+            party = parties[eid].get(cand)
+            if party:
+                per_election.setdefault(party, {}).setdefault(eid, []).append(100 * sign * err)
+    return {party: float(np.mean([np.mean(v) for v in by_e.values()])) for party, by_e in per_election.items()}
+
+
+def estimate_runoff_sigma(elections, params: ModelParams, horizons, bias: dict[str, float] | None = None) -> float | None:
+    """RMS error of averaged head-to-head polls for the real finalists after the party bias, minus sampling noise."""
+    from polledge.model.simulate import runoff_adjustment_pp
+
+    parties = {e.id: {cid: c.party for cid, c in e.candidates.items() if c.party} for e, _p in elections}
+    rows = runoff_errors(elections, params, horizons)
+    if not rows:
         return None
-    var = float(np.mean(np.square(errors)) - np.mean(sampling))
+    residuals = [err - runoff_adjustment_pp(a, b, parties[eid], bias or {}) / 100 for eid, a, b, err, _v in rows]
+    var = float(np.mean(np.square(residuals)) - np.mean([v for *_rest, v in rows]))
     return 100 * float(np.sqrt(max(var, 0.0)))
 
 
@@ -208,6 +236,8 @@ def calibration_payload(result: TuneResult, base: ModelParams, election_ids: lis
     if result.sigma_runoff_pp is not None:
         # Very few runoffs to learn from: keep the estimate within sane bounds.
         out["sigma_runoff_pp"] = round(float(np.clip(result.sigma_runoff_pp, *runoff_bounds)), 2)
+    if result.runoff_bias_pp:
+        out["runoff_bias_pp"] = {p: round(float(np.clip(v, -6.0, 6.0)), 2) for p, v in result.runoff_bias_pp.items()}
     return {
         "elections": election_ids,
         "score_crps_pp": round(result.best_score, 4),

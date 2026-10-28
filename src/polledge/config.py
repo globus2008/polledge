@@ -40,6 +40,9 @@ class ModelParams(BaseModel):
     # Below this share the systematic error shrinks with sqrt(share / ref); 0 disables it.
     small_party_ref_pct: float = Field(10.0, ge=0.0)
     n_simulations: int = Field(10_000, ge=100)
+    # Systematic error of runoff head-to-head polls by party (actual minus polls, pp), e.g. {"RN": -3.0}:
+    # head-to-head polls overstated Le Pen in 2017 and 2022. Estimated by `polledge calibrate`.
+    runoff_bias_pp: dict[str, float] = {}
     seed: int | None = None
     min_share_pct: float = 0.1
 
@@ -120,6 +123,7 @@ class Settings(BaseModel):
 class Candidate(BaseModel):
     name: str
     aliases: list[str] = []
+    party: str | None = None  # party family, e.g. "RN"; used for the runoff poll-bias correction
 
     def all_names(self) -> list[str]:
         """Full name, explicit aliases and the surname (name without the first word)."""
@@ -156,15 +160,37 @@ class Scenario(BaseModel):
     exclude: list[str] = []
 
 
+class NamedScenario(Scenario):
+    """One of several candidate line-ups; the model mixes them by weight."""
+
+    name: str
+    weight: float = Field(1.0, gt=0)
+
+
 class RoundConfig(BaseModel):
     tables: list[TableSelector]
     columns: ColumnNames = ColumnNames()
     scenario: Scenario = Scenario()
+    # Several line-ups instead of `scenario`, e.g. "Philippe alone" 0.6, "Philippe + Attal" 0.25 ...
+    scenarios: list[NamedScenario] = []
     # Rows whose pollster cell contains one of these (e.g. the official result row) are skipped.
     skip_rows: list[str] = ["election", "result", "exit poll"]
     # Accepted sum of shares in one row (%). Rows outside are skipped; rows above 100 are rescaled
     # by the model. Widen only for multi-choice "could vote for" polls - they are a rough proxy.
     row_total: tuple[float, float] = (85.0, 110.0)
+
+    def all_scenarios(self) -> list[NamedScenario]:
+        if self.scenarios:
+            return self.scenarios
+        return [NamedScenario(name="", weight=1.0, require=self.scenario.require, exclude=self.scenario.exclude)]
+
+
+class Candidacy(BaseModel):
+    """A candidate who may not stand: with probability 1 - p their votes go to `substitute`."""
+
+    probability: float = Field(1.0, ge=0.0, le=1.0)
+    substitute: str | None = None
+    transfer: float = Field(0.9, ge=0.0, le=1.0)  # share of the votes the substitute keeps; rest -> Others
 
 
 class BookmakerConfig(BaseModel):
@@ -200,6 +226,10 @@ class ElectionConfig(BaseModel):
     first_round: RoundConfig | None = None
     runoff: RoundConfig | None = None
     model: dict[str, Any] = {}
+    # Candidates who may not stand (e.g. an ineligibility appeal), with a substitute who takes the votes.
+    candidacy: dict[str, Candidacy] = {}
+    # Polymarket event with "will X be on the ballot?" markets; its prices update candidacy probabilities.
+    candidacy_market: str | None = None
     bookmakers: dict[str, BookmakerConfig] = {}
     result: ElectionResult | None = None
 
@@ -217,9 +247,17 @@ class ElectionConfig(BaseModel):
             raise ValueError(f"reference_market '{self.reference_market}' must be one of the bookmakers")
         known = set(self.candidates)
         for rnd in filter(None, [self.first_round, self.runoff]):
-            unknown = (set(rnd.scenario.require) | set(rnd.scenario.exclude)) - known
-            if unknown:
-                raise ValueError(f"scenario refers to unknown candidates: {sorted(unknown)}")
+            for sc in rnd.all_scenarios():
+                unknown = (set(sc.require) | set(sc.exclude)) - known
+                if unknown:
+                    raise ValueError(f"scenario refers to unknown candidates: {sorted(unknown)}")
+            names = [sc.name for sc in rnd.scenarios]
+            if len(names) != len(set(names)) or any(not n or "|" in n or ":" in n for n in names):
+                raise ValueError("scenario names must be unique, non-empty and without '|' or ':'")
+        for cid, cand in self.candidacy.items():
+            bad = {cid, cand.substitute} - {None} - known
+            if bad:
+                raise ValueError(f"candidacy refers to unknown candidates: {sorted(bad)}")
         for name, book in self.bookmakers.items():
             bad = set(book.selections.values()) - known
             if bad:

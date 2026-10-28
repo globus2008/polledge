@@ -10,8 +10,8 @@ default_sample_size: 1000
 # The surname (name without the first word) is added as an alias automatically.
 # Candidates not listed here are summed into "Others".
 candidates:
-  LE_PEN: {name: "Marine Le Pen"}
-  BARDELLA: {name: "Jordan Bardella"}
+  LE_PEN: {name: "Marine Le Pen", party: RN}
+  BARDELLA: {name: "Jordan Bardella", party: RN}
   PHILIPPE: {name: "Édouard Philippe"}
   ATTAL: {name: "Gabriel Attal"}
   MELENCHON: {name: "Jean-Luc Mélenchon"}
@@ -39,17 +39,34 @@ first_round:
     pollster: "Polling firm"
     fieldwork: "Fieldwork date"
     sample_size: "Sample size"
-  # Polls contain several hypothetical candidate line-ups, one per row.
-  # Only rows where everyone in "require" runs and nobody in "exclude" runs are used.
-  # Base scenario: Philippe as the only centrist candidate (without Attal).
-  scenario:
-    require: [LE_PEN, PHILIPPE, MELENCHON, RETAILLEAU, GLUCKSMANN]
-    exclude: [ATTAL, BARDELLA, HOLLANDE, FAURE, RUFFIN, VILLEPIN, LISNARD, BOUAMRANE]
+  # Polls contain several hypothetical candidate line-ups, one per row. Each scenario keeps the rows
+  # where everyone in "require" runs and nobody in "exclude" runs; the model mixes the scenarios by
+  # weight. The weights are a judgement - adjust them as candidacies become clearer.
+  scenarios:
+    - name: philippe              # Philippe the only centrist, Retailleau for LR
+      weight: 0.55
+      require: [LE_PEN, PHILIPPE, MELENCHON, GLUCKSMANN, RETAILLEAU]
+      exclude: [ATTAL, BARDELLA, LISNARD, HOLLANDE, FAURE, RUFFIN, VILLEPIN, BOUAMRANE]
+    - name: philippe_attal        # Philippe and Attal both run
+      weight: 0.20
+      require: [LE_PEN, PHILIPPE, ATTAL, MELENCHON, GLUCKSMANN]
+      exclude: [BARDELLA, LISNARD, HOLLANDE, FAURE, RUFFIN, VILLEPIN, BOUAMRANE]
+    - name: lisnard               # Lisnard runs (Polymarket gives him a real chance)
+      weight: 0.25
+      require: [LE_PEN, PHILIPPE, LISNARD, MELENCHON]
+      exclude: [ATTAL, BARDELLA, HOLLANDE, FAURE, RUFFIN, VILLEPIN]
 
 runoff:
   tables:
+    # Bardella head-to-head polls are kept: they matter if Le Pen cannot stand (see candidacy).
     - heading: ["Second round"]
-      exclude_heading: ["Declined to be candidates", "Scenario polling"]
+      exclude_heading: ["Scenario polling"]
+
+# Le Pen may not stand (ineligibility ruling): then Bardella runs and keeps most of her votes.
+# The probability is updated every hour from the Polymarket "who will be on the ballot?" market.
+candidacy:
+  LE_PEN: {probability: 0.9, substitute: BARDELLA, transfer: 0.95}
+candidacy_market: "2027-french-presidential-election-who-will-be-on-the-ballot"
 
 # Optional model parameter overrides for this election only, e.g.:
 # model:

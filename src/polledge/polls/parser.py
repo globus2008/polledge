@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from statistics import mean
 
 from bs4 import BeautifulSoup, Tag
@@ -191,10 +191,31 @@ def parse_round(
             "No table found for the {round} of election {id}. Check the headings in the config (tables.heading).",
             round=round_label, id=election.id,
         ))
-    polls: list[Poll] = []
+    rows: list[Poll] = []
     for table in selected:
-        polls.extend(_parse_table(table, election, round_name, rnd))
-    return merge_duplicates(polls)
+        rows.extend(_parse_table(table, election, round_name, rnd))
+    return merge_duplicates(assign_scenarios(rows, rnd))
+
+
+def assign_scenarios(rows: list[Poll], rnd: RoundConfig) -> list[Poll]:
+    """Keep the rows matching each configured line-up; a row may belong to several scenarios.
+
+    With named scenarios the scenario key is "<name>:<candidates>", so the model can group by name.
+    """
+    out = []
+    for sc in rnd.all_scenarios():
+        for p in rows:
+            present = {c for c in p.shares if c != OTHER}
+            if any(c not in present for c in sc.require) or any(c in present for c in sc.exclude):
+                continue
+            key = "|".join(sorted(present))
+            out.append(replace(p, shares=dict(p.shares), scenario=f"{sc.name}:{key}" if sc.name else key))
+    return out
+
+
+def scenario_name(poll: Poll) -> str:
+    """Name part of a scenario key ("" for elections with a single unnamed scenario)."""
+    return poll.scenario.split(":", 1)[0] if ":" in poll.scenario else ""
 
 
 def _parse_table(table: WikiTable, election: ElectionConfig, round_name: str, rnd: RoundConfig) -> list[Poll]:
@@ -239,10 +260,6 @@ def _parse_row(
     other_values = [parse_percent(row[i]) for i in cmap.other]
     other = sum(v for v in other_values if v is not None)
     if not shares:
-        return None
-
-    present = set(shares)
-    if any(c not in present for c in rnd.scenario.require) or any(c in present for c in rnd.scenario.exclude):
         return None
 
     total = sum(shares.values()) + other

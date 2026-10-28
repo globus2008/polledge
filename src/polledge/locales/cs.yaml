@@ -358,3 +358,8 @@
 "Found {count} selections, {matched} matched to a candidate. Rows with — are not saved.": "Nalezeno {count} výsledků, {matched} přiřazeno ke kandidátovi. Řádky s — se neuloží."
 "Fill in the bookmaker.": "Vyplň kancelář."
 "No row is assigned to an outcome - check the market type and the Candidate column.": "Žádný řádek není přiřazen k výsledku – zkontroluj typ trhu a sloupec Kandidát."
+" (votes go to {name})": " (hlasy přebírá {name})"
+"Candidate line-ups (scenarios): {mix}": "Sestavy kandidátů (scénáře): {mix}"
+"Runoff polls corrected for known poll errors: {parties}": "Průzkumy 2. kola opravené o známou chybu: {parties}"
+"candidacy (Polymarket)": "kandidatura (Polymarket)"
+"{candidate} does not stand in {share} of simulations{substitute}": "{candidate} nekandiduje v {share} simulací{substitute}"

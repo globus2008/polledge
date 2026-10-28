@@ -39,6 +39,10 @@ class SimulationResult:
     winner: np.ndarray | None = None  # (n_sims,) candidate index
     runoff_share: np.ndarray | None = None  # (n_sims,) share of finalists[:, 0] in runoff
     runoff_sources: dict[str, str] = field(default_factory=dict)  # "A|B" -> "polls" | "fallback"
+    # Correction applied to the first candidate of "A|B" (pp) for systematic runoff poll errors.
+    runoff_adjustments: dict[str, float] = field(default_factory=dict)
+    scenario_weights: dict[str, float] = field(default_factory=dict)  # normalised weights used
+    absent_share: dict[str, float] = field(default_factory=dict)  # candidate -> share of runs not standing
 
     @property
     def n_sims(self) -> int:
@@ -106,6 +110,37 @@ def simulate_shares(
     return _softmax_draws(log_mean, sigma_log, rng.standard_normal((n_sims, len(p))))
 
 
+@dataclass
+class CandidacyRisk:
+    probability: float  # probability the candidate stands
+    substitute: str | None = None  # who takes the votes otherwise
+    transfer: float = 0.9  # share of the votes the substitute keeps; the rest goes to OTHER
+
+
+@dataclass
+class ElectionStructure:
+    """Election-specific inputs beyond the polls."""
+
+    scenario_weights: dict[str, float] = field(default_factory=dict)  # scenario name -> weight
+    candidacy: dict[str, CandidacyRisk] = field(default_factory=dict)
+    parties: dict[str, str] = field(default_factory=dict)  # candidate id -> party (runoff bias)
+
+
+def _allocate(n: int, weights: dict[str, float]) -> dict[str, int]:
+    """Split n simulations by weight (largest remainder), every scenario at least one run."""
+    total = sum(weights.values())
+    exact = {k: n * w / total for k, w in weights.items()}
+    counts = {k: max(1, int(v)) for k, v in exact.items()}
+    for k in sorted(exact, key=lambda k: exact[k] - int(exact[k]), reverse=True):
+        if sum(counts.values()) >= n:
+            break
+        counts[k] += 1
+    while sum(counts.values()) > n:  # only possible when many scenarios got the minimum of one
+        k = max(counts, key=counts.get)
+        counts[k] -= 1
+    return counts
+
+
 def simulate_election(
     first_round: list[Poll],
     runoff_polls: list[Poll] | None,
@@ -114,22 +149,96 @@ def simulate_election(
     params: ModelParams,
     two_round: bool,
     n_sims: int | None = None,
+    structure: ElectionStructure | None = None,
 ) -> SimulationResult | None:
-    avg = weighted_average(first_round, as_of, params)
-    if avg is None:
-        return None
+    from polledge.polls.parser import scenario_name
+
+    structure = structure or ElectionStructure()
     rng = np.random.default_rng(params.seed)
     n_sims = n_sims or params.n_simulations
-    sigma = target_sigma_pp(avg.mean, avg.n_eff, params, (election_date - as_of).days)
-    shares = simulate_shares(avg.mean, sigma, n_sims, rng, params.min_share_pct)
-    result = SimulationResult(avg.candidates, shares, avg, sigma)
+    days = (election_date - as_of).days
+
+    groups: dict[str, list[Poll]] = {}
+    for p in first_round:
+        groups.setdefault(scenario_name(p), []).append(p)
+    if structure.scenario_weights:
+        groups = {k: v for k, v in groups.items() if k in structure.scenario_weights}
+    averages = {k: a for k, polls in groups.items() if (a := weighted_average(polls, as_of, params)) is not None}
+    if not averages:
+        return None
+    weights = {k: structure.scenario_weights.get(k, 1.0) for k in averages}
+
+    candidates = set().union(*(a.candidates for a in averages.values()))
+    for cid, risk in structure.candidacy.items():
+        if cid in candidates:
+            if risk.substitute:
+                candidates.add(risk.substitute)
+            if risk.transfer < 1.0 or not risk.substitute:
+                candidates.add(OTHER)
+    candidates = sorted(candidates)
+    col = {c: i for i, c in enumerate(candidates)}
+
+    # One block of simulations per scenario, sized by its weight, mixed in random order.
+    counts = _allocate(n_sims, weights)
+    shares = np.zeros((n_sims, len(candidates)))
+    sigma = np.zeros(len(candidates))
+    mean = np.zeros(len(candidates))
+    start = 0
+    total_w = sum(weights.values())
+    for name, avg in averages.items():
+        m = counts[name]
+        s = target_sigma_pp(avg.mean, avg.n_eff, params, days)
+        idx = [col[c] for c in avg.candidates]
+        shares[start:start + m, idx] = simulate_shares(avg.mean, s, m, rng, params.min_share_pct)
+        sigma[idx] += weights[name] / total_w * s
+        mean[idx] += weights[name] / total_w * avg.mean
+        start += m
+    shares = shares[rng.permutation(n_sims)]
+
+    # Candidates who may not stand: their votes move to the substitute (or to OTHER).
+    absent: dict[str, float] = {}
+    for cid, risk in structure.candidacy.items():
+        if cid not in col or risk.probability >= 1.0:
+            continue
+        out = rng.random(n_sims) >= risk.probability
+        moved = shares[out, col[cid]]
+        if risk.substitute:
+            shares[out, col[risk.substitute]] += moved * risk.transfer
+            shares[out, col[OTHER]] += moved * (1.0 - risk.transfer)
+        else:
+            shares[out, col[OTHER]] += moved
+        shares[out, col[cid]] = 0.0
+        absent[cid] = float(out.mean())
+
+    main = max(averages, key=lambda k: weights[k])
+    combined = PollAverage(
+        candidates=candidates, mean=mean, n_eff=sum(a.n_eff * weights[k] / total_w for k, a in averages.items()),
+        n_polls=sum(a.n_polls for a in averages.values()), as_of=as_of,
+        house_effects=averages[main].house_effects,
+    )
+    result = SimulationResult(candidates, shares, combined, sigma)
+    result.scenario_weights = {k: w / total_w for k, w in weights.items()}
+    result.absent_share = absent
 
     if two_round:
-        horizon_pp = params.sigma_horizon_pp_per_sqrt_day * np.sqrt(max((election_date - as_of).days, 0))
-        _simulate_runoff(result, runoff_polls or [], as_of, params, rng, horizon_pp)
+        horizon_pp = params.sigma_horizon_pp_per_sqrt_day * np.sqrt(max(days, 0))
+        _simulate_runoff(result, runoff_polls or [], as_of, params, rng, horizon_pp, structure.parties)
     else:
         result.winner = result.ranking_shares().argmax(axis=1)
     return result
+
+
+def runoff_adjustment_pp(ca: str, cb: str, parties: dict[str, str], bias: dict[str, float]) -> float:
+    """Correction of candidate a's head-to-head share (pp) for known systematic poll errors by party."""
+    ba = bias.get(parties.get(ca, ""))
+    bb = bias.get(parties.get(cb, ""))
+    if ba is not None and bb is not None:
+        return (ba - bb) / 2
+    if ba is not None:
+        return ba
+    if bb is not None:
+        return -bb
+    return 0.0
 
 
 def _simulate_runoff(
@@ -139,7 +248,9 @@ def _simulate_runoff(
     params: ModelParams,
     rng: np.random.Generator,
     horizon_pp: float = 0.0,
+    parties: dict[str, str] | None = None,
 ) -> None:
+    parties = parties or {}
     shares = result.shares
     ranking = result.ranking_shares()
     order = np.argsort(-ranking, axis=1)
@@ -162,7 +273,10 @@ def _simulate_runoff(
         key = "|".join(sorted([ca, cb]))
         avg = weighted_average(by_pair.get(key, []), as_of, params)
         if avg is not None and set(avg.candidates) == {ca, cb}:
-            mean_a = avg.as_dict()[ca]
+            adjust = runoff_adjustment_pp(ca, cb, parties, params.runoff_bias_pp)
+            mean_a = float(np.clip(avg.as_dict()[ca] + adjust / 100.0, 0.0, 1.0))
+            if adjust:
+                result.runoff_adjustments[key] = adjust if ca == key.split("|")[0] else -adjust
             sampling_pp = 100.0 * np.sqrt(mean_a * (1 - mean_a) / avg.n_eff)
             sigma = np.sqrt(params.sigma_runoff_pp**2 + horizon_pp**2 + sampling_pp**2) / 100.0
             draws = mean_a + sigma * rng.standard_normal(len(rows))

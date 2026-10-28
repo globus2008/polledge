@@ -23,6 +23,7 @@ from polledge.config import (
 )
 from polledge.db import AppSettingRow, make_session_factory
 from polledge.errors import PollEdgeError
+from polledge.polls.cleaning import normalize_name
 from polledge.model.markets import MarketSpec, default_markets, market_probabilities, parse_market
 from polledge.model.simulate import SimulationResult, simulate_election
 from polledge.odds.base import OddsQuote
@@ -162,7 +163,65 @@ def fetch_odds(
             log.warning("Odds from %s for %s failed: %s", name, election.id, exc)
             report.error = str(exc)
         reports.append(report)
+    if election.candidacy_market and not bookmakers:
+        report = FetchReport(_("candidacy (Polymarket)"))
+        try:
+            report.quotes = len(update_candidacy(session, fetcher, election))
+        except PollEdgeError as exc:
+            log.warning("Candidacy prices for %s failed: %s", election.id, exc)
+            report.error = str(exc)
+        reports.append(report)
     return reports
+
+
+def election_structure(election: ElectionConfig, candidacy_override: dict[str, float] | None = None):
+    """Scenario weights, candidacy risks and parties of an election, for the simulation."""
+    from polledge.model.simulate import CandidacyRisk, ElectionStructure
+
+    weights = {sc.name: sc.weight for sc in election.first_round.scenarios} if election.first_round else {}
+    override = candidacy_override or {}
+    candidacy = {
+        cid: CandidacyRisk(override.get(cid, c.probability), c.substitute, c.transfer)
+        for cid, c in election.candidacy.items()
+    }
+    parties = {cid: c.party for cid, c in election.candidates.items() if c.party}
+    return ElectionStructure(weights, candidacy, parties)
+
+
+CANDIDACY_KEY = "candidacy:{id}"
+
+
+def load_candidacy(session: Session, election_id: str) -> dict[str, float]:
+    row = session.get(AppSettingRow, CANDIDACY_KEY.format(id=election_id))
+    return dict(row.value.get("probabilities", {})) if row is not None else {}
+
+
+def update_candidacy(session: Session, fetcher, election: ElectionConfig) -> dict[str, float]:
+    """Read "will X be on the ballot?" prices from Polymarket for the candidates in `candidacy`."""
+    from polledge.config import BookmakerConfig
+    from polledge.odds.scrapers.mapping import NameMapper
+    from polledge.odds.scrapers.polymarket import API_URL, parse_event
+
+    if not election.candidacy_market or not election.candidacy:
+        return {}
+    body, fetched_at = fetcher.get_with_time(API_URL.format(slug=election.candidacy_market))
+    _title, selections = parse_event(body)
+    mapper = NameMapper(election, BookmakerConfig(markets={}))
+    found = {}
+    for name, price in selections:
+        cid = mapper.candidates.get(normalize_name(name))
+        if cid in election.candidacy:
+            found[cid] = round(price, 4)
+    key = CANDIDACY_KEY.format(id=election.id)
+    value = {"probabilities": found, "source": election.candidacy_market, "fetched": fetched_at.isoformat()}
+    row = session.get(AppSettingRow, key)
+    if row is None:
+        session.add(AppSettingRow(key=key, value=value, updated_at=utcnow()))
+    else:
+        row.value, row.updated_at = value, utcnow()
+    session.commit()
+    log.info("Candidacy probabilities for %s: %s", election.id, found)
+    return found
 
 
 def run_model(
@@ -171,12 +230,14 @@ def run_model(
     params: ModelParams,
     as_of: date | None = None,
     n_sims: int | None = None,
+    candidacy_override: dict[str, float] | None = None,
 ) -> SimulationResult:
     as_of = as_of or min(date.today(), election.election_date)
     first = [p for p in polls if p.round == "first"]
     runoff = [p for p in polls if p.round == "runoff"]
     sim = simulate_election(first, runoff, as_of, election.election_date, params,
-                            two_round=election.type == "two_round", n_sims=n_sims)
+                            two_round=election.type == "two_round", n_sims=n_sims,
+                            structure=election_structure(election, candidacy_override))
     if sim is None:
         raise PollEdgeError(
             _("No usable polls for election {id} as of {date}. Run `update-polls` first.", id=election.id, date=as_of)
@@ -187,7 +248,8 @@ def run_model(
 def run_model_from_db(session: Session, settings: Settings, election: ElectionConfig,
                       as_of: date | None = None, n_sims: int | None = None) -> tuple[SimulationResult, ModelParams]:
     params = model_params_for(settings, election)
-    return run_model(load_polls(session, election.id), election, params, as_of, n_sims), params
+    candidacy = load_candidacy(session, election.id)
+    return run_model(load_polls(session, election.id), election, params, as_of, n_sims, candidacy), params
 
 
 def probabilities_for(sim: SimulationResult, specs: list[MarketSpec]) -> dict[str, dict[str, float]]:

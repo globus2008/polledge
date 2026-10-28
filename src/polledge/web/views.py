@@ -76,6 +76,7 @@ def model_page() -> None:
     c2.metric(_("Days to the election"), (cfg.election_date - avg.as_of).days)
     c3.metric(_("Polls in the average"), avg.n_polls)
     c4.metric(_("Simulations"), f"{sim.n_sims:,}".replace(",", " "))
+    _model_assumptions(cfg, sim)
 
     lo, hi = np.quantile(sim.shares, [0.1, 0.9], axis=0)
     winner = probs.get("winner", {})
@@ -128,6 +129,25 @@ def model_page() -> None:
     params = model_params_for(ctx.settings, cfg)
     st.caption(_("Model parameters: half-life {hl} days, systematic error {sys} pp, horizon error {hor} pp/√day.",
                  hl=params.half_life_days, sys=params.sigma_sys_pp, hor=params.sigma_horizon_pp_per_sqrt_day))
+
+
+def _model_assumptions(cfg, sim) -> None:
+    """Scenario mix, candidacy risks and runoff corrections the simulation used."""
+    notes = []
+    if len(sim.scenario_weights) > 1:
+        mix = ", ".join(f"{name} {w:.0%}" for name, w in sim.scenario_weights.items())
+        notes.append(_("Candidate line-ups (scenarios): {mix}", mix=mix))
+    for cid, share in sim.absent_share.items():
+        sub = cfg.candidacy[cid].substitute if cid in cfg.candidacy else None
+        notes.append(_("{candidate} does not stand in {share} of simulations{substitute}",
+                       candidate=cfg.candidate_name(cid), share=f"{share:.0%}",
+                       substitute=_(" (votes go to {name})", name=cfg.candidate_name(sub)) if sub else ""))
+    bias = model_params_for(context().settings, cfg).runoff_bias_pp
+    if bias and sim.runoff_adjustments:
+        notes.append(_("Runoff polls corrected for known poll errors: {parties}",
+                       parties=", ".join(f"{p} {v:+.1f} pp" for p, v in bias.items())))
+    if notes:
+        st.caption(" · ".join(notes))
 
 
 def _market_overview(ctx, cfg) -> None:

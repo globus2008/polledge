@@ -37,14 +37,19 @@ def test_rowspan_is_expanded(html):
 
 
 def test_first_round_scenario_filter(html, election):
+    from polledge.polls.parser import scenario_name
+
     polls = [p for p in parse_election_html(html, election) if p.round == "first"]
-    assert polls, "expected at least one poll in the base scenario"
-    for p in polls:
+    base = [p for p in polls if scenario_name(p) == "philippe"]
+    with_attal = [p for p in polls if scenario_name(p) == "philippe_attal"]
+    assert base and with_attal, "expected polls in the base and in the Attal scenario"
+    for p in base:
         assert {"LE_PEN", "PHILIPPE", "MELENCHON"} <= set(p.shares)
         assert "ATTAL" not in p.shares
         assert sum(p.shares.values()) == pytest.approx(100.0, abs=0.01)
         assert p.end_date <= date(2026, 10, 31)
-    ipsos = next(p for p in polls if p.pollster == "Ipsos")
+    assert all("ATTAL" in p.shares for p in with_attal)
+    ipsos = next(p for p in base if p.pollster == "Ipsos")
     assert ipsos.end_date == date(2026, 10, 22)
     assert ipsos.sample_size == 1500
     assert ipsos.shares["LE_PEN"] == 33.5
@@ -58,7 +63,8 @@ def test_scenario_polling_section_excluded(html, election):
 def test_runoff_tables(html, election):
     runoff = [p for p in parse_election_html(html, election) if p.round == "runoff"]
     pairs = {p.scenario for p in runoff}
-    assert pairs == {"LE_PEN|PHILIPPE", "LE_PEN|MELENCHON"}  # Bardella tables are excluded by heading
+    # Bardella tables ("Declined to be candidates") are kept for the case that Le Pen cannot stand.
+    assert pairs == {"LE_PEN|PHILIPPE", "LE_PEN|MELENCHON", "BARDELLA|PHILIPPE"}
     for p in runoff:
         assert sum(p.shares.values()) == pytest.approx(100.0)
         assert OTHER not in p.shares

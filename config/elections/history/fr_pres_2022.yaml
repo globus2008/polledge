@@ -8,7 +8,7 @@ default_sample_size: 1000
 
 candidates:
   MACRON: {name: "Emmanuel Macron"}
-  LE_PEN: {name: "Marine Le Pen"}
+  LE_PEN: {name: "Marine Le Pen", party: RN}
   MELENCHON: {name: "Jean-Luc Mélenchon"}
   ZEMMOUR: {name: "Éric Zemmour"}
   PECRESSE: {name: "Valérie Pécresse"}
