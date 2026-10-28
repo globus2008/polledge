@@ -82,3 +82,16 @@ def test_no_arbitrage_if_market_not_covered():
                           SignalSettings())
     assert comp.arbitrage_sum is None
     assert not comp.is_arbitrage
+
+
+def test_min_stake_filters_tiny_long_shot_signals():
+    # Harris example: p = 4.25 %, odds 25 -> edge +6.25 %, quarter Kelly stake ~6.5 CZK of 10 000.
+    market = "winner"
+    quotes = _quotes(market, [("Betano", "H", 25.0), ("Betano", "V", 1.05)])
+    probs = {"H": 0.0425, "V": 0.9575}
+    lenient = SignalSettings(min_stake=0)
+    strict = SignalSettings(min_stake=50)
+    h = next(o for o in compare_market(market, probs, latest_books(quotes), lenient).outcomes if o.outcome == "H")
+    assert h.edge == pytest.approx(0.0625) and h.stake == pytest.approx(6.51, abs=0.01) and h.is_signal
+    h = next(o for o in compare_market(market, probs, latest_books(quotes), strict).outcomes if o.outcome == "H")
+    assert not h.is_signal and h.below_min_stake and h.stake == pytest.approx(6.51, abs=0.01)

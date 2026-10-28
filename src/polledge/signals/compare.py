@@ -38,6 +38,7 @@ class OutcomeComparison:
     stake: float
     is_signal: bool
     in_model: bool = True  # False: the bookmaker lists it, but the model has no polls for it
+    below_min_stake: bool = False  # edge above the threshold, but the Kelly stake is below min_stake
 
 
 @dataclass
@@ -97,7 +98,9 @@ def compare_market(
                 odds_by_bookmaker=quoted,
                 edge=e,
                 stake=stake,
-                is_signal=e is not None and e > settings.edge_threshold and stake > 0,
+                is_signal=(e is not None and e > settings.edge_threshold and stake > 0
+                           and stake >= settings.min_stake),
+                below_min_stake=(e is not None and e > settings.edge_threshold and 0 < stake < settings.min_stake),
                 in_model=in_model,
             )
         )

@@ -347,3 +347,4 @@
 "This election has no poll model: the probabilities come from {source}. A signal means a bookmaker pays more than the {source} price implies.": "Tyto volby nemají model z průzkumů: pravděpodobnosti jsou z {source}. Signál znamená, že kancelář platí víc, než odpovídá ceně na {source}."
 "probabilities from {source}": "pravděpodobnosti z {source}"
 "{election} has no poll model - its probabilities come from {source}. Use `polledge signals -e {id}`.": "{election} nemají model z průzkumů – pravděpodobnosti jsou z {source}. Použij `polledge signals -e {id}`."
+"stake below minimum": "vklad pod minimem"

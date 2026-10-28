@@ -303,7 +303,8 @@ def signals_page() -> None:
                 _("Bookmaker"): o.best_bookmaker,
                 _("Edge"): o.edge,
                 _("Stake"): money(o.stake) if o.stake > 0 else "",
-                _("Signal"): "✅ " + _("SIGNAL") if o.is_signal else ("" if o.in_model else _("not in model")),
+                _("Signal"): ("✅ " + _("SIGNAL") if o.is_signal else _("stake below minimum") if o.below_min_stake
+                              else "" if o.in_model else _("not in model")),
             })
             rows.append(row)
         if not rows:

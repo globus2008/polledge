@@ -49,6 +49,9 @@ class SignalSettings(BaseModel):
     kelly_fraction: float = 0.25
     bankroll: float = 10_000.0
     max_stake_pct: float | None = 0.05
+    # A signal needs a recommended stake of at least this amount. Kelly stakes shrink with the odds,
+    # so this also filters fragile long-shot "edges" built on a fraction of a percentage point.
+    min_stake: float = 0.0
     currency: str = "CZK"
     # Sources used only as a market reference (fair probability), never for best odds, signals or stakes.
     reference_bookmakers: list[str] = ["Polymarket"]

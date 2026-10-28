@@ -312,6 +312,7 @@ Zdrojový kód je celý anglicky. České texty jsou v katalogu `src/polledge/lo
 - **Edge** = p_model × nejlepší kurz − 1. **Signál** vznikne, když edge > `edge_threshold` (výchozí 5 %).
 - **Arbitráž:** součet 1/nejlepší kurz přes všechny výsledky trhu (napříč kancelářemi) je menší než 1.
 - **Vklad:** f* = (p·b − (1−p))/b, kde b = kurz − 1. Vklad = max(0, f*) × `kelly_fraction` (výchozí 1/4) × `bankroll`, s volitelným stropem `max_stake_pct`.
+- **Minimální vklad** (`min_stake`, výchozí 50 Kč): signál vznikne, jen když doporučený vklad dosáhne tohoto minima. Kelly dává u vysokých kurzů malé vklady, takže pravidlo zároveň odfiltruje vratké „edge“ u outsiderů. Například kurz 25 s edge +6 % vychází na vklad kolem 7 Kč z 10 000. Takové řádky se zobrazí s poznámkou „vklad pod minimem“.
 
 ### Deník a vyhodnocení
 

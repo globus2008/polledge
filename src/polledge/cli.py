@@ -502,7 +502,8 @@ def signals_cmd(
                 t.add_row(
                     outcome_label(cfg, o.outcome), model_cell, pct(o.p_market), num(o.best_odds),
                     o.best_bookmaker or "", signed_pct(o.edge), money(o.stake) if o.stake > 0 else DASH,
-                    "[bold green]" + _("SIGNAL") + "[/bold green]" if o.is_signal else "",
+                    "[bold green]" + _("SIGNAL") + "[/bold green]" if o.is_signal
+                    else "[dim]" + _("stake below minimum") + "[/dim]" if o.below_min_stake else "",
                 )
             console.print(t)
             margins = ", ".join(f"{bm} {pct(m)}" for bm, m in comp.margins.items())

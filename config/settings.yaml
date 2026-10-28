@@ -53,4 +53,5 @@ signals:
   kelly_fraction: 0.25      # 1/4 Kelly
   bankroll: 10000           # virtual bankroll
   max_stake_pct: 0.05       # stake cap as a share of the bankroll (null = no cap)
+  min_stake: 50             # no signal below this recommended stake (filters tiny long-shot bets)
   currency: "Kč"            # currency label in the output only
