@@ -238,7 +238,15 @@ Stav podpory kanceláří (říjen 2026):
 | Chance | nepodporováno: web vrací automatickým klientům HTTP 403 |
 | Fortuna | nepodporováno: nabídku načítá JavaScript z interního API |
 
-U nepodporovaných kanceláří zadávej kurzy ručně přes `import-odds` nebo formulářem na stránce Kurzy. Obojí se v porovnání kombinuje a vybírá se nejlepší kurz.
+U nepodporovaných kanceláří je nejrychlejší **vložení ze stránky** (Kurzy → *Vložit ze stránky*):
+
+1. Na webu kanceláře otevři trh a zkopíruj celou stránku (Ctrl+A, Ctrl+C).
+2. V PollEdge zvol kancelář a typ trhu a text vlož.
+3. Aplikace sama najde dvojice jméno–kurz a přiřadí je ke kandidátům, i při jiném pořadí slov („Le Pen Marine“). V náhledu jde cokoli opravit a jedním tlačítkem se kurzy uloží.
+
+Další možnosti jsou ruční formulář a `import-odds` ze souboru. Všechny zdroje se v porovnání kombinují a vybírá se nejlepší kurz.
+
+Ověřeno v říjnu 2026: Tipsport, Chance a Mr Bit vracejí automatickým klientům HTTP 403. Fortuna, Synot Tip, Allwyn, BetX, Forbet, Merkur X-Tip a Kingsbet načítají nabídku JavaScriptem z interních rozhraní. Automaticky a v souladu s jejich pravidly proto jde stahovat jen Betano.
 
 **Automatické hledání (Betano).** Místo pevné adresy stránky lze u kanceláře uvést klíčová slova, třeba `discover: ["Francie", "prezident"]`. Hodinové hlídání pak projde stránku Politika a stahuje kurzy ze všech soutěží, jejichž název obsahuje všechna slova (velikost písmen ani diakritika nehrají roli). Dokud kancelář trh nevypíše, nic se nestahuje a web u zdroje ukazuje „zatím nevypisuje“.
 

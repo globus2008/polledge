@@ -375,14 +375,101 @@ def odds_page() -> None:
     cfg = current_election()
     st.title(_("Betting odds"))
     st.caption(cfg.name)
-    tab_enter, tab_import, tab_stored = st.tabs([_("Enter odds"), _("Import file"), _("Stored odds")])
+    tab_paste, tab_enter, tab_import, tab_stored = st.tabs(
+        [_("Paste from page"), _("Enter odds"), _("Import file"), _("Stored odds")])
 
+    with tab_paste:
+        _paste_odds(ctx, cfg)
     with tab_enter:
         _enter_odds(ctx, cfg)
     with tab_import:
         _import_odds(ctx, cfg)
     with tab_stored:
         _stored_odds(ctx, cfg)
+
+
+def match_candidate(cfg, name: str) -> str | None:
+    """Candidate id for a pasted selection name: exact alias, or all words of a candidate name in any order."""
+    from polledge.polls.cleaning import normalize_name
+
+    key = normalize_name(name)
+    words = set(key.replace(".", " ").split())
+    for cid, cand in cfg.candidates.items():
+        if key in {normalize_name(n) for n in cand.all_names()}:
+            return cid
+    for cid, cand in cfg.candidates.items():
+        cand_words = set(normalize_name(cand.name).replace(".", " ").split())
+        if cand_words and cand_words <= words:
+            return cid
+    return None
+
+
+def _paste_odds(ctx, cfg) -> None:
+    from polledge.odds.paste import parse_pasted_odds
+
+    st.caption(_("Open the market on the bookmaker's website, press Ctrl+A and Ctrl+C, then paste it here with "
+                 "Ctrl+V. PollEdge finds the names and odds; check the preview and save."))
+    spec = _market_picker(cfg, list(cfg.candidates), key="paste")
+    if spec is None:
+        return
+    c1, c2 = st.columns(2)
+    bookmaker = c1.text_input(_("Bookmaker"), value="Tipsport", key="paste_bm")
+    when = c2.time_input(_("Time"), value=time(datetime.now().hour, datetime.now().minute), key="paste_time")
+    text = st.text_area(_("Copied page text"), height=180, key="paste_text")
+    if not text.strip():
+        return
+    selections = parse_pasted_odds(text)
+    if not selections:
+        st.warning(_("No names with odds found in the pasted text."))
+        return
+
+    binary = spec.kind in BINARY_OUTCOMES
+    labels = {o: outcome_label(cfg, o) for o in BINARY_OUTCOMES[spec.kind]} if binary else \
+        {cid: c.name for cid, c in cfg.candidates.items()}
+    skip = "—"
+    options = [skip, *labels.values()]
+    rows = []
+    for sel in selections:
+        if binary:
+            guess = next((o for o, label in labels.items() if label.lower() == sel.name.lower() or o == sel.name.lower()),
+                         None)
+        else:
+            guess = match_candidate(cfg, sel.name)
+        rows.append({_("Text on the page"): sel.name, _("Candidate / party"): labels.get(guess, skip),
+                     _("Odds"): sel.odds})
+    st.write(_("Found {count} selections, {matched} matched automatically. Unmatched rows (—) are not saved.",
+               count=len(rows), matched=sum(r[_("Candidate / party")] != skip for r in rows)))
+    edited = st.data_editor(
+        pd.DataFrame(rows), hide_index=True, width="stretch", key=f"paste_editor_{spec.id}",
+        disabled=[_("Text on the page")],
+        column_config={
+            _("Candidate / party"): st.column_config.SelectboxColumn(options=options, required=True),
+            _("Odds"): st.column_config.NumberColumn(min_value=1.01, step=0.01, format="%.2f"),
+        },
+    )
+    if st.button(_("Save odds"), type="primary", key="paste_save"):
+        by_label = {label: key for key, label in labels.items()}
+        timestamp = datetime.combine(datetime.now().date(), when)
+        quotes, errors = [], []
+        for i, row in edited.iterrows():
+            outcome = by_label.get(row[_("Candidate / party")])
+            if outcome is None or pd.isna(row[_("Odds")]):
+                continue
+            record = {"election_id": cfg.id, "bookmaker": bookmaker.strip(), "market": spec.id,
+                      "outcome": outcome, "odds": row[_("Odds")], "timestamp": timestamp}
+            try:
+                quotes.append(quote_from_record(record, _("row {n}", n=i + 1)))
+            except ValueError as exc:
+                errors.append(str(exc))
+        for err in errors:
+            st.error(err)
+        if quotes and bookmaker.strip():
+            with ctx.session() as session:
+                inserted, updated = store_quotes(session, quotes, "paste")
+            st.success(_("{count} odds read, {inserted} new, {updated} updated.", count=len(quotes),
+                         inserted=inserted, updated=updated))
+        elif not errors:
+            st.warning(_("Fill in the bookmaker and at least one odds value."))
 
 
 def _enter_odds(ctx, cfg) -> None:
