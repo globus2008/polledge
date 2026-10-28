@@ -1,0 +1,42 @@
+# Spain - first prime minister after the general election of 29 November 2026.
+# The PM depends on coalition building, not only on vote shares, so the Polymarket price serves as
+# the probability ("market" mode). Fortuna lists the market ("1. premiér po volbách 2026"): paste its
+# page on the Odds page. Betano is watched in case it lists Spain too.
+#
+# Settlement can differ: Polymarket resolves to the next PM sworn in by 31 March 2028 ("Other" if none);
+# check the bookmaker's rules (e.g. what happens after a repeat election).
+id: es_pm_2026
+name: "Španělsko – premiér po volbách 2026"
+type: single_round
+election_date: 2026-11-29
+probability_source: market
+reference_market: polymarket
+
+candidates:
+  FEIJOO: {name: "Alberto Núñez Feijóo", aliases: ["Alberto Feijóo", "Núñez Feijóo", "Feijoo", "Alberto Nunez Feijoo"]}
+  SANCHEZ: {name: "Pedro Sánchez", aliases: ["Pedro Sanchez"]}
+  ABASCAL: {name: "Santiago Abascal"}
+  AYUSO: {name: "Isabel Díaz Ayuso", aliases: ["Isabel Ayuso", "Ayuso"]}
+  DIAZ: {name: "Yolanda Díaz", aliases: ["Yolanda Diaz"]}
+  CUERPO: {name: "Carlos Cuerpo"}
+  MONTERO: {name: "María Jesús Montero", aliases: ["Maria Jesus Montero"]}
+  PUENTE: {name: "Óscar Puente", aliases: ["Oscar Puente"]}
+  TELLADO: {name: "Miguel Tellado"}
+  GAMARRA: {name: "Cuca Gamarra"}
+  SEMPER: {name: "Borja Sémper", aliases: ["Borja Semper"]}
+  MUNOZ: {name: "Ester Muñoz", aliases: ["Ester Munoz"]}
+  MILLAN: {name: "Pepa Millán", aliases: ["Pepa Millan"]}
+  PUIGDEMONT: {name: "Carles Puigdemont"}
+  URTASUN: {name: "Ernest Urtasun"}
+  ESTEBAN: {name: "Aitor Esteban"}
+
+bookmakers:
+  polymarket:
+    pages: ["next-prime-minister-of-spain-20260625005215443"]
+    markets:
+      "next-prime-minister-of-spain-20260625005215443": winner
+  betano:
+    discover: ["Španělsko"]
+    markets:
+      "Vítěz": winner
+      "Premiér": winner
